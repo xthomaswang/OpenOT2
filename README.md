@@ -47,12 +47,11 @@ pip install openot2[supergradients]
 # Liquid level calibration (pandas + scikit-learn)
 pip install openot2[calibration]
 
-# LLM-powered protocol generation (openai SDK)
-pip install openot2[llm]
-
 # Everything
 pip install openot2[all]
 ```
+
+> **Note:** The base install includes the OpenAI SDK for LLM-powered protocol generation. Vision model libraries (YOLO, SuperGradients) are optional due to their large size (PyTorch dependency).
 
 ## Quick Start
 

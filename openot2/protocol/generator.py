@@ -311,13 +311,7 @@ class ProtocolGenerator:
         base_url: Optional[str] = None,
         model: str = "gpt-4o",
     ) -> None:
-        try:
-            from openai import OpenAI
-        except ImportError:
-            raise ImportError(
-                "openai is required for ProtocolGenerator. "
-                "Install with: pip install openot2[llm]"
-            ) from None
+        from openai import OpenAI
 
         kwargs: Dict[str, Any] = {}
         if api_key:
