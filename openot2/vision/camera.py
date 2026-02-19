@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import platform
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -93,8 +93,48 @@ class USBCamera(Camera):
 
         return frame
 
+    def preview(self, title: str = "Camera Preview") -> np.ndarray:
+        """Capture a frame and display it in an OpenCV window.
+
+        Press any key to close the window. Returns the captured BGR frame.
+        """
+        frame = self.capture()
+        if frame is None:
+            raise RuntimeError("Failed to capture frame for preview")
+        cv2.imshow(title, frame)
+        cv2.waitKey(0)
+        cv2.destroyWindow(title)
+        return frame
+
     def release(self) -> None:
         if self._cap is not None:
             self._cap.release()
             self._cap = None
             logger.info("Camera released")
+
+    @staticmethod
+    def list_cameras(max_id: int = 10) -> List[Dict]:
+        """Scan for available USB cameras.
+
+        Args:
+            max_id: Maximum device index to probe (0 to max_id-1).
+
+        Returns:
+            List of dicts with keys: ``id``, ``width``, ``height``, ``backend``.
+        """
+        backend = USBCamera._detect_backend()
+        found: List[Dict] = []
+        for i in range(max_id):
+            cap = cv2.VideoCapture(i, backend)
+            if cap.isOpened():
+                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                info = {"id": i, "width": w, "height": h, "backend": backend}
+                found.append(info)
+                logger.info("Found camera %d: %dx%d", i, w, h)
+                cap.release()
+            else:
+                cap.release()
+        if not found:
+            logger.warning("No cameras found (probed 0-%d)", max_id - 1)
+        return found

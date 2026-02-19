@@ -15,12 +15,18 @@ __all__ = [
     "VisionModel",
     "Camera",
     "USBCamera",
+    "list_cameras",
     "TipAnalyzer",
     "TipCheckResult",
     "LiquidAnalyzer",
     "LiquidCheckResult",
     "build_calibration_from_csv",
 ]
+
+
+def list_cameras(max_id: int = 10):
+    """Shortcut for :meth:`USBCamera.list_cameras`."""
+    return USBCamera.list_cameras(max_id=max_id)
 
 
 # Lazy adapter imports to avoid forcing ML framework installation
