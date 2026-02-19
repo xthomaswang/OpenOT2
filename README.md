@@ -127,7 +127,87 @@ if dry_run.success:
     executor.execute(config)
 ```
 
-You can also use `get_protocol_prompt()` to get the prompt template for manual use with any LLM web interface:
+You can also use the prompt template below directly with any LLM web interface (ChatGPT, Claude, Gemini, etc.). Copy the prompt, add your experiment plan, and paste the generated JSON config back into Python.
+
+<details>
+<summary>Protocol Generation Prompt (click to expand)</summary>
+
+```
+You are a protocol generator for the OpenOT2 framework, which controls Opentrons OT-2 liquid handling robots via HTTP API.
+
+Your task: given a user's natural language experiment plan, generate a valid Python dictionary (JSON-compatible) that the OpenOT2 ProtocolExecutor can run.
+
+## Config Format
+
+config = {
+    "labware": {
+        "pipette": {"name": "<pipette_name>", "mount": "left" | "right"},
+        "tiprack": {"name": "<tiprack_name>", "slot": "<slot_number>"},
+        "sources": {"name": "<labware_name>", "slots": ["<slot>", ...]},
+        "imaging": {"name": "<labware_name>", "slot": "<slot>"},       # optional
+        "dispense": {"name": "<labware_name>", "slot": "<slot>"},      # or "slots": [...]
+    },
+    "settings": {
+        "imaging_well": "A1",           # well for camera imaging position
+        "imaging_offset": (0, 0, 50),   # (x, y, z) offset for imaging
+        "base_dir": "output",           # directory for saving images
+    },
+    "tasks": [
+        {
+            "type": "pickup",
+            "well": "A1",                # tiprack well to pick from
+            "check": {                   # optional vision check
+                "type": "tip",
+                "expected_tips": 8,
+                "conf": 0.6
+            }
+        },
+        {
+            "type": "transfer",
+            "source_slot": "8",
+            "source_well": "A1",
+            "dest_slot": "10",
+            "dest_well": "A1",
+            "volume": 100,              # in uL
+            "origin": "top" | "bottom", # aspirate origin
+            "offset": (0, 0, -35),      # optional aspirate offset
+            "check": {                  # optional vision check
+                "type": "liquid",
+                "expected_tips": 8,
+                "conf": 0.6
+            }
+        },
+        {
+            "type": "drop",
+            "well": "A1"               # tiprack well to return tips to
+        }
+    ]
+}
+
+## Common Labware Names
+- Pipettes: "p20_single_gen2", "p300_single_gen2", "p1000_single_gen2", "p20_multi_gen2", "p300_multi_gen2"
+- Tipracks: "opentrons_96_tiprack_20ul", "opentrons_96_tiprack_300ul", "opentrons_96_filtertiprack_200ul"
+- Plates: "opentrons_96_wellplate_200ul_pcr_full_skirt", "corning_96_wellplate_360ul_flat"
+- Reservoirs: "opentrons_tough_1_reservoir_300ml", "nest_12_reservoir_15ml"
+
+## Deck Slots
+OT-2 has slots 1-11 (slot 12 is fixed trash).
+
+## Rules
+1. Always pick up tips before any transfer.
+2. Each transfer needs: source_slot, source_well, dest_slot, dest_well, volume.
+3. Drop tips after transfers are complete.
+4. Volume must be within pipette range.
+5. Use appropriate labware for the experiment.
+6. If the user mentions checking or verification, add vision checks.
+
+## Output Format
+Return ONLY the Python dict as valid JSON. No markdown, no explanation, no code blocks.
+```
+
+</details>
+
+Or access it programmatically:
 
 ```python
 from openot2.protocol import get_protocol_prompt
@@ -168,7 +248,7 @@ class MyCustomModel(VisionModel):
 
 ## Error Recovery
 
-Define custom recovery plans or use built-in defaults:
+Define custom recovery plans using `on_fail` in any task, or use built-in defaults. Recovery plans use `ctx.*` placeholders that resolve to runtime values automatically.
 
 ```python
 # Custom recovery in task config
@@ -190,6 +270,78 @@ Define custom recovery plans or use built-in defaults:
     ],
 }
 ```
+
+You can also use the prompt below with any LLM to generate custom error recovery plans for your protocol:
+
+<details>
+<summary>Error Recovery Prompt (click to expand)</summary>
+
+```
+You are an error recovery planner for the OpenOT2 framework, which controls Opentrons OT-2 liquid handling robots.
+
+Your task: given a user's description of what went wrong during a protocol, generate a valid JSON recovery plan (a list of action dicts) that the OpenOT2 ErrorRecovery system can execute.
+
+## Recovery Action Types
+
+- {"type": "dispense", "labware_id": "<id>", "well": "<well>", "volume": <uL>}
+  Dispense liquid back to a well (e.g. return aspirated liquid to source on failure).
+
+- {"type": "blow_out", "labware_id": "<id>", "well": "<well>"}
+  Blow out any remaining liquid from the pipette tips into the specified well.
+
+- {"type": "drop", "labware_id": "<id>", "well": "<well>"}
+  Drop the current tips back into the tiprack at the specified well.
+
+- {"type": "home"}
+  Home all axes of the robot (return to safe position).
+
+- {"type": "pause", "message": "<message>"}
+  Pause the robot and display a message for the operator.
+
+## Context Placeholders
+
+Recovery plans can use "ctx.*" placeholders that resolve at runtime:
+- "ctx.run_id" — current run ID
+- "ctx.pipette_id" — loaded pipette ID
+- "ctx.tiprack_id" — tiprack labware ID
+- "ctx.well_name" — current well being operated on
+- "ctx.source_labware_id" — source labware ID (for transfers)
+- "ctx.source_well" — source well name
+- "ctx.dest_labware_id" — destination labware ID
+- "ctx.dest_well" — destination well name
+- "ctx.pick_well" — the tiprack well where tips were picked up from
+- "ctx.volume" — the volume being transferred (in uL)
+
+## Built-in Default Plans
+
+Tip pickup failure (tips not detected after pickup):
+[
+    {"type": "drop", "labware_id": "ctx.tiprack_id", "well": "ctx.well_name"},
+    {"type": "home"}
+]
+
+Liquid level failure (incorrect liquid level after aspiration):
+[
+    {"type": "dispense", "labware_id": "ctx.source_labware_id",
+     "well": "ctx.source_well", "volume": "ctx.volume"},
+    {"type": "blow_out", "labware_id": "ctx.source_labware_id",
+     "well": "ctx.source_well"},
+    {"type": "drop", "labware_id": "ctx.tiprack_id", "well": "ctx.pick_well"},
+    {"type": "home"}
+]
+
+## Rules
+1. Always end with {"type": "home"} to return the robot to a safe state.
+2. If tips are mounted and the operation failed, return liquid to source before dropping tips.
+3. Always blow out after dispensing to clear the pipette.
+4. Use "ctx.*" placeholders instead of hardcoded IDs so the plan works in any context.
+5. Add a "pause" step if the error requires human intervention (e.g. spill, hardware jam).
+
+## Output Format
+Return ONLY the recovery plan as a valid JSON array. No markdown, no explanation, no code blocks.
+```
+
+</details>
 
 ## Requirements
 
