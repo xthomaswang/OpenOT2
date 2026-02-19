@@ -53,6 +53,7 @@ class OT2Client:
         self._run_id: Optional[str] = None
         self._commands_url: Optional[str] = None
         self._pipette_id: Optional[str] = None
+        self._pipettes: Dict[str, str] = {}  # mount -> pipette_id
         self._labware_by_slot: Dict[str, str] = {}
 
     # ------------------------------------------------------------------
@@ -150,8 +151,24 @@ class OT2Client:
         }
         logger.info("loadPipette: %s (%s)", pipette_name, mount)
         data = self._post_command(cmd)
-        self._pipette_id = data["result"]["pipetteId"]
-        logger.info("Pipette ID: %s", self._pipette_id)
+        pid = data["result"]["pipetteId"]
+        self._pipette_id = pid
+        self._pipettes[mount] = pid
+        logger.info("Pipette ID: %s (mount=%s)", pid, mount)
+        return pid
+
+    def use_pipette(self, mount: str) -> str:
+        """Switch the active pipette by mount name (``"left"`` or ``"right"``).
+
+        Returns the pipette ID that is now active.
+        """
+        if mount not in self._pipettes:
+            raise ValueError(
+                f"No pipette loaded on mount '{mount}'. "
+                f"Loaded mounts: {list(self._pipettes.keys())}"
+            )
+        self._pipette_id = self._pipettes[mount]
+        logger.info("Active pipette switched to %s (%s)", mount, self._pipette_id)
         return self._pipette_id
 
     def load_labware(
