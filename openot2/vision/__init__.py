@@ -16,6 +16,7 @@ __all__ = [
     "Camera",
     "USBCamera",
     "list_cameras",
+    "precheck_cameras",
     "TipAnalyzer",
     "TipCheckResult",
     "LiquidAnalyzer",
@@ -27,6 +28,11 @@ __all__ = [
 def list_cameras(max_id: int = 10):
     """Shortcut for :meth:`USBCamera.list_cameras`."""
     return USBCamera.list_cameras(max_id=max_id)
+
+
+def precheck_cameras(expected_id: int = 0, **kwargs):
+    """Shortcut for :meth:`USBCamera.precheck_cameras`."""
+    return USBCamera.precheck_cameras(expected_id=expected_id, **kwargs)
 
 
 # Lazy adapter imports to avoid forcing ML framework installation

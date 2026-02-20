@@ -113,6 +113,88 @@ class USBCamera(Camera):
             logger.info("Camera released")
 
     @staticmethod
+    def precheck_cameras(
+        expected_id: int = 0,
+        max_id: int = 10,
+        width: int = 1920,
+        height: int = 1080,
+        warmup_frames: int = 5,
+    ) -> List[Dict]:
+        """Scan all cameras, show a preview from each, and print guidance.
+
+        Displays a matplotlib figure with one frame per detected camera.
+        The camera matching *expected_id* is highlighted so the user can
+        verify it shows the correct overhead view.
+
+        Args:
+            expected_id: The device index currently set in the config.
+            max_id: Maximum device index to probe.
+            width: Capture width for preview frames.
+            height: Capture height for preview frames.
+            warmup_frames: Frames to discard before capturing the preview.
+
+        Returns:
+            List of camera info dicts (same format as :meth:`list_cameras`).
+        """
+        import matplotlib.pyplot as plt
+
+        cameras = USBCamera.list_cameras(max_id=max_id)
+
+        print(f"Found {len(cameras)} camera(s):")
+        for cam in cameras:
+            marker = " <-- config" if cam["id"] == expected_id else ""
+            print(f"  Camera {cam['id']}: {cam['width']}x{cam['height']}{marker}")
+
+        if not cameras:
+            print("\nNo cameras found! Check USB connection.")
+            return cameras
+
+        fig, axes = plt.subplots(1, len(cameras), figsize=(6 * len(cameras), 4))
+        if len(cameras) == 1:
+            axes = [axes]
+
+        for i, cam_info in enumerate(cameras):
+            try:
+                cam = USBCamera(
+                    camera_id=cam_info["id"],
+                    width=width,
+                    height=height,
+                    warmup_frames=warmup_frames,
+                )
+                with cam:
+                    frame = cam.capture()
+                if frame is not None:
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    axes[i].imshow(frame_rgb)
+                    title = f"Camera {cam_info['id']}"
+                    if cam_info["id"] == expected_id:
+                        title += " (selected)"
+                    axes[i].set_title(title, fontsize=12, fontweight="bold")
+                else:
+                    axes[i].text(0.5, 0.5, "Capture failed",
+                                 ha="center", va="center", fontsize=14)
+                    axes[i].set_title(f"Camera {cam_info['id']} (FAILED)", fontsize=12)
+            except Exception as e:
+                axes[i].text(0.5, 0.5, f"Error:\n{e}",
+                             ha="center", va="center", fontsize=10, wrap=True)
+                axes[i].set_title(f"Camera {cam_info['id']} (ERROR)", fontsize=12)
+            axes[i].axis("off")
+
+        plt.suptitle("Verify the overhead camera — update device_id if needed",
+                      fontsize=11)
+        plt.tight_layout()
+        plt.show()
+
+        if not any(c["id"] == expected_id for c in cameras):
+            print(f"\nWARNING: Config expects camera {expected_id} but it's not available.")
+            print(f"Available IDs: {[c['id'] for c in cameras]}")
+        else:
+            print(f"\nConfig uses camera {expected_id}. "
+                  "If that's not the plate view, update camera.device_id in experiment.yaml.")
+
+        return cameras
+
+    @staticmethod
     def list_cameras(max_id: int = 10) -> List[Dict]:
         """Scan for available USB cameras.
 
