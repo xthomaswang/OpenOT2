@@ -73,6 +73,20 @@ class OT2Client:
         return dict(self._labware_by_slot)
 
     # ------------------------------------------------------------------
+    # Health / connectivity
+    # ------------------------------------------------------------------
+
+    def health(self, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """GET /health — returns the parsed JSON dict.
+
+        Raises ``requests.RequestException`` on network or HTTP errors.
+        """
+        url = f"{self._base_url}/health"
+        r = self._session.get(url, timeout=timeout or self._timeout)
+        r.raise_for_status()
+        return r.json()
+
+    # ------------------------------------------------------------------
     # Connection lifecycle
     # ------------------------------------------------------------------
 
