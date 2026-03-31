@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from openot2.control.calibration import (
+from webapp.calibration import (
     CalibrationProfile,
     CalibrationSession,
     CalibrationTarget,

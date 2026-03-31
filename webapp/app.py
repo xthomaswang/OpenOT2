@@ -29,7 +29,7 @@ from typing import Any, Callable
 from openot2.client import OT2Client
 from openot2.control.runner import TaskRunner
 from openot2.control.store import JsonRunStore
-from openot2.control.web import create_app
+from webapp.web import create_app
 from openot2.operations import OT2Operations
 from webapp.deck import DeckConfig
 from webapp.handlers import OT2StepHandlers

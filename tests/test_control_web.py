@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from openot2.control.calibration import (
+from webapp.calibration import (
     CalibrationProfile,
     Offset,
     build_target,
@@ -18,7 +18,7 @@ from openot2.control.calibration import (
 from openot2.control.models import RunStatus, RunStep, TaskRun
 from openot2.control.runner import TaskRunner
 from openot2.control.store import JsonRunStore
-from openot2.control.web import create_app
+from webapp.web import create_app
 
 
 # ---------------------------------------------------------------------------

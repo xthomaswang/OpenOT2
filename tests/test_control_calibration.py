@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openot2.control.calibration import (
+from webapp.calibration import (
     CalibrationProfile,
     CalibrationSession,
     CalibrationTarget,
