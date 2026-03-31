@@ -8,8 +8,8 @@ import tempfile
 import numpy as np
 import pytest
 
-from openot2.vision.base_types import PredictionResult
-from openot2.vision.analyzers import (
+from vision.base_types import PredictionResult
+from vision.analyzers import (
     LiquidAnalyzer,
     TipAnalyzer,
     build_calibration_from_csv,
@@ -216,6 +216,6 @@ class TestCalibration:
 class TestUSBCamera:
     def test_detect_backend(self):
         """_detect_backend should return an int without crashing."""
-        from openot2.vision.camera import USBCamera
+        from vision.camera import USBCamera
         backend = USBCamera._detect_backend()
         assert isinstance(backend, int)

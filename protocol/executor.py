@@ -11,16 +11,16 @@ from pydantic import BaseModel, field_validator
 
 from openot2.client import OT2Client
 from openot2.utils import LabwareMap, create_output_path, load_labware_from_config
-from openot2.vision.base_types import PredictionResult, VisionModel
-from openot2.vision.camera import Camera
-from openot2.vision.analyzers import (
+from vision.base_types import PredictionResult, VisionModel
+from vision.camera import Camera
+from vision.analyzers import (
     CalibrationFn,
     LiquidAnalyzer,
     LiquidCheckResult,
     TipAnalyzer,
     TipCheckResult,
 )
-from openot2.protocol.recovery import ErrorRecovery, RecoveryContext
+from protocol.recovery import ErrorRecovery, RecoveryContext
 
 logger = logging.getLogger("openot2.protocol")
 

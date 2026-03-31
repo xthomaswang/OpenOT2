@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>OpenOT2 - Run {{ run.name }}</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; }
+        h1, h2 { color: #333; }
+        nav { margin-bottom: 1.5rem; }
+        nav a { margin-right: 1rem; color: #0066cc; text-decoration: none; }
+        nav a:hover { text-decoration: underline; }
+        .info { margin-bottom: 1rem; }
+        .info span { margin-right: 2rem; }
+        .status { font-weight: bold; }
+        .status-completed { color: #28a745; }
+        .status-running { color: #007bff; }
+        .status-paused { color: #ffc107; }
+        .status-failed { color: #dc3545; }
+        .status-draft { color: #6c757d; }
+        .status-pause_requested { color: #e0a800; }
+        table { border-collapse: collapse; width: 100%; max-width: 900px; margin-bottom: 1.5rem; }
+        th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; }
+        th { background: #f0f0f0; }
+        button { padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+        button:hover { background: #e9e9e9; }
+        button.primary { background: #007bff; color: #fff; border-color: #007bff; }
+        button.primary:hover { background: #0056b3; }
+        button.warning { background: #ffc107; color: #333; border-color: #ffc107; }
+        .eta { font-size: 1.1rem; margin: 0.5rem 0 1rem; }
+        .events { max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 0.5rem; font-size: 0.85rem; font-family: monospace; background: #fff; }
+        .events p { margin: 0.15rem 0; }
+        #feedback { margin-top: 0.5rem; color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Runs</a>
+        <a href="/calibration">Calibration</a>
+    </nav>
+
+    <h1>{{ run.name }}</h1>
+
+    <div class="info">
+        <span>Status: <span id="run-status" class="status status-{{ run.status.value }}">{{ run.status.value }}</span></span>
+        <span>Progress: <span id="run-progress">{{ run.current_step_index }}</span> / <span id="run-total">{{ run.steps|length }}</span></span>
+    </div>
+
+    <div class="eta" id="run-eta">
+        {% if run.eta_seconds is not none %}
+            ETA: {{ "%.0f"|format(run.eta_seconds) }}s remaining
+        {% else %}
+            ETA: --
+        {% endif %}
+    </div>
+
+    <div style="margin-bottom: 1.5rem;">
+        <button class="primary" onclick="startRun()">Start</button>
+        <button class="warning" onclick="pauseRun()">Pause</button>
+        <button class="primary" onclick="resumeRun()">Resume</button>
+        <div id="feedback"></div>
+    </div>
+
+    <h2>Steps</h2>
+    <table id="steps-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Kind</th>
+                <th>Status</th>
+                <th>Duration</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for step in run.steps %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ step.name }}</td>
+                <td>{{ step.kind }}</td>
+                <td class="status status-{{ step.status.value }}">{{ step.status.value }}</td>
+                <td>{% if step.duration_seconds is not none %}{{ "%.2f"|format(step.duration_seconds) }}s{% else %}--{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Events</h2>
+    <div class="events" id="events-log">
+        {% for event in events %}
+        <p>[{{ event.timestamp.strftime('%H:%M:%S') }}] {{ event.type }}: {{ event.message }}</p>
+        {% endfor %}
+        {% if not events %}
+        <p>No events yet.</p>
+        {% endif %}
+    </div>
+
+    <script>
+        const runId = "{{ run.id }}";
+
+        function showFeedback(msg) {
+            document.getElementById("feedback").textContent = msg;
+            setTimeout(() => { document.getElementById("feedback").textContent = ""; }, 3000);
+        }
+
+        async function startRun() {
+            const resp = await fetch(`/api/runs/${runId}/start`, { method: "POST" });
+            const data = await resp.json();
+            showFeedback(resp.ok ? "Run started" : (data.detail || "Error"));
+        }
+
+        async function pauseRun() {
+            const resp = await fetch(`/api/runs/${runId}/pause`, { method: "POST" });
+            const data = await resp.json();
+            showFeedback(resp.ok ? "Pause requested" : (data.detail || "Error"));
+        }
+
+        async function resumeRun() {
+            const resp = await fetch(`/api/runs/${runId}/resume`, { method: "POST" });
+            const data = await resp.json();
+            showFeedback(resp.ok ? "Run resumed" : (data.detail || "Error"));
+        }
+
+        async function pollStatus() {
+            try {
+                const resp = await fetch(`/api/runs/${runId}`);
+                if (!resp.ok) return;
+                const run = await resp.json();
+                document.getElementById("run-status").textContent = run.status;
+                document.getElementById("run-status").className = "status status-" + run.status;
+                document.getElementById("run-progress").textContent = run.current_step_index;
+                document.getElementById("run-total").textContent = run.steps.length;
+                if (run.eta_seconds !== null) {
+                    document.getElementById("run-eta").textContent = "ETA: " + Math.round(run.eta_seconds) + "s remaining";
+                } else {
+                    document.getElementById("run-eta").textContent = "ETA: --";
+                }
+            } catch (e) { /* ignore poll errors */ }
+        }
+
+        setInterval(pollStatus, 2000);
+    </script>
+</body>
+</html>

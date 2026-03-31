@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>OpenOT2 - Calibration</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; }
+        h1, h2 { color: #333; }
+        nav { margin-bottom: 1.5rem; }
+        nav a { margin-right: 1rem; color: #0066cc; text-decoration: none; }
+        nav a:hover { text-decoration: underline; }
+        table { border-collapse: collapse; width: 100%; max-width: 1000px; margin-bottom: 1.5rem; }
+        th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; }
+        th { background: #f0f0f0; }
+        button { padding: 0.3rem 0.6rem; margin: 0.1rem; cursor: pointer; border: 1px solid #ccc; border-radius: 3px; background: #fff; font-size: 0.85rem; }
+        button:hover { background: #e9e9e9; }
+        button.primary { background: #007bff; color: #fff; border-color: #007bff; }
+        button.primary:hover { background: #0056b3; }
+        .nudge-btn { min-width: 2rem; }
+        .no-client { background: #fff3cd; border: 1px solid #ffc107; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        .empty { color: #999; font-style: italic; }
+        #feedback { margin-top: 0.5rem; color: #666; font-style: italic; }
+        .offset-cell { font-family: monospace; font-size: 0.85rem; }
+        .setup-box { border: 1px solid #ddd; padding: 1rem; margin-bottom: 1.5rem; background: #fff; border-radius: 4px; max-width: 600px; }
+        .setup-box h3 { margin-top: 0; }
+        .setup-box label { display: block; margin: 0.4rem 0 0.2rem; font-weight: 500; }
+        .setup-box input, .setup-box select { padding: 0.3rem 0.5rem; border: 1px solid #ccc; border-radius: 3px; width: 100%; box-sizing: border-box; }
+        .setup-box .row { display: flex; gap: 0.5rem; margin-bottom: 0.3rem; }
+        .setup-box .row > div { flex: 1; }
+        .dispense-row { display: flex; gap: 1rem; align-items: center; margin-top: 0.5rem; }
+        .dispense-row select { width: auto; padding: 0.3rem 0.5rem; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Runs</a>
+        <a href="/calibration">Calibration</a>
+    </nav>
+
+    <h1>Calibration</h1>
+
+    {% if not has_client %}
+    <div class="no-client">No OT2Client connected. Preview and test actions are unavailable.</div>
+    {% endif %}
+
+    {% if not profile %}
+    <!-- No profile loaded — show setup options -->
+    <div class="setup-box" id="setup-load">
+        <h3>Load existing profile</h3>
+        <label for="profile-path">Profile JSON path:</label>
+        <input type="text" id="profile-path" placeholder="/path/to/calibration_profile.json">
+        <button class="primary" onclick="loadProfile()" style="margin-top: 0.5rem;">Load</button>
+    </div>
+
+    <div class="setup-box" id="setup-create">
+        <h3>Create new profile</h3>
+        <label for="new-profile-name">Profile name:</label>
+        <input type="text" id="new-profile-name" placeholder="my-calibration">
+
+        <div id="target-forms">
+            <div class="target-entry" data-idx="0">
+                <hr>
+                <strong>Target 1</strong>
+                <div class="row">
+                    <div><label>Name</label><input class="t-name" value="source"></div>
+                    <div><label>Action</label>
+                        <select class="t-action"><option value="aspirate">aspirate</option><option value="dispense">dispense</option></select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div><label>Slot</label><input class="t-slot" value="3"></div>
+                    <div><label>Well</label><input class="t-well" value="A1"></div>
+                    <div><label>Volume</label><input class="t-volume" type="number" step="0.1" value="50"></div>
+                </div>
+            </div>
+        </div>
+        <button onclick="addTargetForm()" style="margin-top: 0.5rem;">+ Add target</button>
+        <button class="primary" onclick="createProfile()" style="margin-top: 0.5rem;">Create</button>
+    </div>
+    <div id="feedback"></div>
+
+    {% else %}
+    <!-- Profile loaded — calibration UI -->
+    <h2>{{ profile.name }} - Targets</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Action</th>
+                <th>Slot</th>
+                <th>Well</th>
+                <th>Offset (X/Y/Z)</th>
+                <th>Nudge</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for target in profile.targets %}
+            <tr>
+                <td>{{ loop.index0 }}</td>
+                <td>{{ target.name }}</td>
+                <td>{{ target.action }}</td>
+                <td>{{ target.labware_slot }}</td>
+                <td>{{ target.well }}</td>
+                <td class="offset-cell" id="offset-{{ loop.index0 }}">
+                    {{ "%.2f"|format(target.offset.x) }} /
+                    {{ "%.2f"|format(target.offset.y) }} /
+                    {{ "%.2f"|format(target.offset.z) }}
+                </td>
+                <td>
+                    <button class="nudge-btn" onclick="nudge({{ loop.index0 }}, 'x', -0.5)">X-</button>
+                    <button class="nudge-btn" onclick="nudge({{ loop.index0 }}, 'x', 0.5)">X+</button>
+                    <button class="nudge-btn" onclick="nudge({{ loop.index0 }}, 'y', -0.5)">Y-</button>
+                    <button class="nudge-btn" onclick="nudge({{ loop.index0 }}, 'y', 0.5)">Y+</button>
+                    <button class="nudge-btn" onclick="nudge({{ loop.index0 }}, 'z', -0.5)">Z-</button>
+                    <button class="nudge-btn" onclick="nudge({{ loop.index0 }}, 'z', 0.5)">Z+</button>
+                </td>
+                <td>
+                    <button onclick="preview({{ loop.index0 }})">Preview</button>
+                    <button onclick="testAspirate({{ loop.index0 }})">Aspirate</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Test Dispense (source &rarr; destination)</h3>
+    <div class="dispense-row">
+        <label>Source:
+            <select id="dispense-source">
+                {% for target in profile.targets %}
+                <option value="{{ loop.index0 }}">{{ loop.index0 }}: {{ target.name }} ({{ target.action }})</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Dest:
+            <select id="dispense-dest">
+                {% for target in profile.targets %}
+                <option value="{{ loop.index0 }}" {% if target.action == "dispense" %}selected{% endif %}>{{ loop.index0 }}: {{ target.name }} ({{ target.action }})</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button class="primary" onclick="testDispense()">Test Dispense</button>
+    </div>
+
+    <div style="margin-top: 1.5rem;">
+        <button class="primary" onclick="saveProfile()">Save Profile</button>
+    </div>
+    <div id="feedback"></div>
+    {% endif %}
+
+    <script>
+        let targetCount = 1;
+
+        function showFeedback(msg) {
+            document.getElementById("feedback").textContent = msg;
+            setTimeout(() => { document.getElementById("feedback").textContent = ""; }, 4000);
+        }
+
+        async function apiPost(url, body) {
+            const resp = await fetch(url, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                showFeedback(data.detail || "Error");
+                return null;
+            }
+            return data;
+        }
+
+        async function loadProfile() {
+            const path = document.getElementById("profile-path").value.trim();
+            if (!path) { showFeedback("Enter a file path"); return; }
+            const data = await apiPost("/api/calibration/load-profile", { path: path });
+            if (data) window.location.reload();
+        }
+
+        function addTargetForm() {
+            targetCount++;
+            const container = document.getElementById("target-forms");
+            const div = document.createElement("div");
+            div.className = "target-entry";
+            div.innerHTML = `<hr><strong>Target ${targetCount}</strong>
+                <div class="row">
+                    <div><label>Name</label><input class="t-name" value="target-${targetCount}"></div>
+                    <div><label>Action</label>
+                        <select class="t-action"><option value="aspirate">aspirate</option><option value="dispense" selected>dispense</option></select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div><label>Slot</label><input class="t-slot" value="5"></div>
+                    <div><label>Well</label><input class="t-well" value="A1"></div>
+                    <div><label>Volume</label><input class="t-volume" type="number" step="0.1" value="50"></div>
+                </div>`;
+            container.appendChild(div);
+        }
+
+        async function createProfile() {
+            const name = document.getElementById("new-profile-name").value.trim();
+            if (!name) { showFeedback("Enter a profile name"); return; }
+            const entries = document.querySelectorAll(".target-entry");
+            const targets = [];
+            entries.forEach(e => {
+                targets.push({
+                    name: e.querySelector(".t-name").value,
+                    action: e.querySelector(".t-action").value,
+                    labware_slot: e.querySelector(".t-slot").value,
+                    well: e.querySelector(".t-well").value,
+                    volume: parseFloat(e.querySelector(".t-volume").value) || null,
+                });
+            });
+            const data = await apiPost("/api/calibration/create-profile", { name: name, targets: targets });
+            if (data) window.location.reload();
+        }
+
+        async function preview(idx) {
+            const data = await apiPost("/api/calibration/preview", { target_index: idx });
+            if (data) showFeedback("Previewing " + data.target);
+        }
+
+        async function nudge(idx, axis, delta) {
+            const data = await apiPost("/api/calibration/nudge", { target_index: idx, axis: axis, delta: delta });
+            if (data && data.offset) {
+                const o = data.offset;
+                document.getElementById("offset-" + idx).textContent =
+                    o.x.toFixed(2) + " / " + o.y.toFixed(2) + " / " + o.z.toFixed(2);
+            }
+        }
+
+        async function testAspirate(idx) {
+            const data = await apiPost("/api/calibration/test-aspirate", { target_index: idx });
+            if (data) showFeedback("Aspirate test OK");
+        }
+
+        async function testDispense() {
+            const srcIdx = parseInt(document.getElementById("dispense-source").value);
+            const dstIdx = parseInt(document.getElementById("dispense-dest").value);
+            const data = await apiPost("/api/calibration/test-dispense", {
+                source_index: srcIdx,
+                dest_index: dstIdx,
+            });
+            if (data) showFeedback("Dispense test OK: " + data.source + " → " + data.dest);
+        }
+
+        async function saveProfile() {
+            const path = prompt("Save profile to path:", "calibration_profile.json");
+            if (path) {
+                const data = await apiPost("/api/calibration/save-profile", { path: path });
+                if (data) showFeedback("Profile saved to " + path);
+            }
+        }
+    </script>
+</body>
+</html>

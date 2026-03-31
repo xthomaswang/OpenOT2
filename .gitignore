@@ -34,3 +34,4 @@ debug.py
 *.ipynb
 output/
 test_output/
+run_data/

@@ -57,8 +57,8 @@ pip install openot2[all]
 
 ```python
 from openot2 import OT2Client, setup_logging
-from openot2.vision import YOLOAdapter, USBCamera
-from openot2.protocol import ProtocolExecutor
+from vision import YOLOAdapter, USBCamera
+from protocol import ProtocolExecutor
 
 setup_logging()
 
@@ -114,7 +114,7 @@ executor.execute(config)
 Generate protocols from natural language using any OpenAI-compatible API:
 
 ```python
-from openot2.protocol import ProtocolGenerator
+from protocol import ProtocolGenerator
 
 generator = ProtocolGenerator(api_key="sk-...", model="gpt-4o")
 
@@ -210,7 +210,7 @@ Return ONLY the Python dict as valid JSON. No markdown, no explanation, no code 
 Or access it programmatically:
 
 ```python
-from openot2.protocol import get_protocol_prompt
+from protocol import get_protocol_prompt
 print(get_protocol_prompt())
 ```
 
@@ -223,7 +223,7 @@ The vision subsystem verifies operations in real time by capturing images and ru
 - **Calibration** — Build volume-to-height mapping from CSV data using polynomial regression
 
 ```python
-from openot2.vision import build_calibration_from_csv
+from vision import build_calibration_from_csv
 
 calibration_fn = build_calibration_from_csv("LLD_Calibration_Data.csv", degree=3)
 # calibration_fn(100.0) -> expected liquid height in percent
@@ -234,7 +234,7 @@ calibration_fn = build_calibration_from_csv("LLD_Calibration_Data.csv", degree=3
 Implement the `VisionModel` abstract class to integrate any detection framework:
 
 ```python
-from openot2.vision import VisionModel, PredictionResult
+from vision import VisionModel, PredictionResult
 
 class MyCustomModel(VisionModel):
     def predict(self, image_path: str, conf: float = 0.4) -> PredictionResult:

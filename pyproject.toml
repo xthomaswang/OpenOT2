@@ -20,16 +20,18 @@ dependencies = [
 yolo = ["ultralytics>=8.0"]
 supergradients = ["super-gradients>=3.1"]
 calibration = ["pandas>=2.0", "scikit-learn>=1.2"]
-all = ["openot2[yolo,supergradients,calibration]"]
+web = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "jinja2>=3.1"]
+all = ["openot2[yolo,supergradients,calibration,web]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov",
     "responses>=0.23",
     "ruff",
+    "httpx",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["openot2"]
+packages = ["openot2", "vision", "protocol", "webapp"]
 
 [tool.pytest.ini_options]
 markers = [

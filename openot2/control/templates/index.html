@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>OpenOT2 - Runs</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; }
+        h1 { color: #333; }
+        nav { margin-bottom: 1.5rem; }
+        nav a { margin-right: 1rem; color: #0066cc; text-decoration: none; }
+        nav a:hover { text-decoration: underline; }
+        table { border-collapse: collapse; width: 100%; max-width: 900px; }
+        th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; }
+        th { background: #f0f0f0; }
+        tr:hover { background: #f5f5f5; }
+        a { color: #0066cc; }
+        .status { font-weight: bold; }
+        .status-completed { color: #28a745; }
+        .status-running { color: #007bff; }
+        .status-paused { color: #ffc107; }
+        .status-failed { color: #dc3545; }
+        .status-draft { color: #6c757d; }
+        .empty { color: #999; font-style: italic; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Runs</a>
+        <a href="/calibration">Calibration</a>
+    </nav>
+    <h1>Task Runs</h1>
+    {% if runs %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Steps</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr>
+                <td>{{ run.name }}</td>
+                <td class="status status-{{ run.status.value }}">{{ run.status.value }}</td>
+                <td>{{ run.current_step_index }} / {{ run.steps|length }}</td>
+                <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</td>
+                <td><a href="/runs/{{ run.id }}">View</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No runs yet.</p>
+    {% endif %}
+</body>
+</html>

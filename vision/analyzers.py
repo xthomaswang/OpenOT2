@@ -8,7 +8,7 @@ from typing import Callable, List, Optional, Sequence
 
 import numpy as np
 
-from openot2.vision.base_types import PredictionResult
+from vision.base_types import PredictionResult
 
 logger = logging.getLogger("openot2.vision.analyzers")
 
