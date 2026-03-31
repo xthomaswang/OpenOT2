@@ -1,59 +1,167 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>OpenOT2 - Runs</title>
-    <style>
-        body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; }
-        h1 { color: #333; }
-        nav { margin-bottom: 1.5rem; }
-        nav a { margin-right: 1rem; color: #0066cc; text-decoration: none; }
-        nav a:hover { text-decoration: underline; }
-        table { border-collapse: collapse; width: 100%; max-width: 900px; }
-        th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; }
-        th { background: #f0f0f0; }
-        tr:hover { background: #f5f5f5; }
-        a { color: #0066cc; }
-        .status { font-weight: bold; }
-        .status-completed { color: #28a745; }
-        .status-running { color: #007bff; }
-        .status-paused { color: #ffc107; }
-        .status-failed { color: #dc3545; }
-        .status-draft { color: #6c757d; }
-        .empty { color: #999; font-style: italic; }
-    </style>
-</head>
-<body>
-    <nav>
-        <a href="/">Runs</a>
-        <a href="/calibration">Calibration</a>
-    </nav>
-    <h1>Task Runs</h1>
+{% extends "base.html" %}
+{% block title %}OpenOT2 - Dashboard{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<h1 style="font-size:1.6rem; margin-bottom:1.5rem;">Dashboard</h1>
+
+<!-- Stat Cards -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:2rem;">
+    <div class="card" style="text-align:center;">
+        <div style="font-size:2rem; font-weight:700;" id="stat-total">{{ runs|length }}</div>
+        <div style="color:#8899aa; font-size:0.85rem;">Total Runs</div>
+    </div>
+    <div class="card" style="text-align:center; border-color:#4ea8ff40;">
+        <div style="font-size:2rem; font-weight:700; color:#4ea8ff;" id="stat-running">{{ runs|selectattr('status','equalto', 'running')|list|length }}</div>
+        <div style="color:#8899aa; font-size:0.85rem;">Running</div>
+    </div>
+    <div class="card" style="text-align:center; border-color:#28c76f40;">
+        <div style="font-size:2rem; font-weight:700; color:#28c76f;" id="stat-completed">{{ runs|selectattr('status','equalto', 'completed')|list|length }}</div>
+        <div style="color:#8899aa; font-size:0.85rem;">Completed</div>
+    </div>
+    <div class="card" style="text-align:center; border-color:#ea545540;">
+        <div style="font-size:2rem; font-weight:700; color:#ea5455;" id="stat-failed">{{ runs|selectattr('status','equalto', 'failed')|list|length }}</div>
+        <div style="color:#8899aa; font-size:0.85rem;">Failed</div>
+    </div>
+</div>
+
+<!-- Header Row -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <h2 style="font-size:1.2rem;">Runs</h2>
+    <button class="btn btn-primary" onclick="document.getElementById('create-modal').classList.add('show')">+ New Run</button>
+</div>
+
+<!-- Run Cards -->
+<div id="run-list" style="display:grid; gap:1rem;">
     {% if runs %}
-    <table>
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Status</th>
-                <th>Steps</th>
-                <th>Created</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for run in runs %}
-            <tr>
-                <td>{{ run.name }}</td>
-                <td class="status status-{{ run.status.value }}">{{ run.status.value }}</td>
-                <td>{{ run.current_step_index }} / {{ run.steps|length }}</td>
-                <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</td>
-                <td><a href="/runs/{{ run.id }}">View</a></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        {% for run in runs %}
+        <a href="/runs/{{ run.id }}" style="text-decoration:none; color:inherit;">
+            <div class="card" style="display:flex; align-items:center; gap:1.5rem; cursor:pointer; transition:border-color 0.2s;" onmouseover="this.style.borderColor='#4ea8ff'" onmouseout="this.style.borderColor='#243b5c'">
+                <div style="flex:1;">
+                    <div style="font-weight:600; font-size:1.05rem; margin-bottom:0.25rem;">{{ run.name }}</div>
+                    <div style="color:#667788; font-size:0.8rem;">{{ run.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+                </div>
+                <span class="badge badge-{{ run.status.value }}">{{ run.status.value }}</span>
+                <div style="width:140px;">
+                    <div style="font-size:0.8rem; color:#8899aa; margin-bottom:0.25rem;">{{ run.current_step_index }} / {{ run.steps|length }} steps</div>
+                    <div class="progress-bar">
+                        <div class="fill" style="width:{{ (run.current_step_index / run.steps|length * 100) if run.steps|length > 0 else 0 }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
     {% else %}
-    <p class="empty">No runs yet.</p>
+        <div class="card" style="text-align:center; color:#667788; padding:3rem;">No runs yet. Click "New Run" to create one.</div>
     {% endif %}
-</body>
-</html>
+</div>
+
+<!-- Create Run Modal -->
+<div class="modal-overlay" id="create-modal">
+    <div class="modal">
+        <h2>Create New Run</h2>
+        <label>Run Name</label>
+        <input type="text" id="run-name" placeholder="My experiment run">
+
+        <div style="margin-top:1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                <label style="margin:0;">Steps</label>
+                <button class="btn btn-primary" style="padding:0.3rem 0.75rem; font-size:0.8rem;" onclick="addStep()">+ Add Step</button>
+            </div>
+            <div id="steps-container"></div>
+        </div>
+
+        <div style="display:flex; gap:0.75rem; margin-top:1.5rem; justify-content:flex-end;">
+            <button class="btn" style="background:#243b5c;" onclick="document.getElementById('create-modal').classList.remove('show')">Cancel</button>
+            <button class="btn btn-success" onclick="submitRun()">Create Run</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let stepCount = 0;
+
+    function addStep() {
+        stepCount++;
+        const container = document.getElementById("steps-container");
+        const div = document.createElement("div");
+        div.className = "card";
+        div.style.marginBottom = "0.75rem";
+        div.style.padding = "0.75rem";
+        div.dataset.idx = stepCount;
+        div.innerHTML = `
+            <div style="display:flex; gap:0.75rem; align-items:center; margin-bottom:0.5rem;">
+                <div style="flex:1;"><label>Name</label><input class="s-name" placeholder="Step ${stepCount}"></div>
+                <div style="flex:1;">
+                    <label>Kind</label>
+                    <select class="s-kind" style="width:100%;">
+                        <option value="pick_up_tip">pick_up_tip</option>
+                        <option value="aspirate">aspirate</option>
+                        <option value="dispense">dispense</option>
+                        <option value="drop_tip">drop_tip</option>
+                        <option value="mix">mix</option>
+                        <option value="move_to_well">move_to_well</option>
+                        <option value="blow_out">blow_out</option>
+                        <option value="home">home</option>
+                        <option value="pause">pause</option>
+                        <option value="custom">custom</option>
+                    </select>
+                </div>
+                <button style="background:none; border:none; color:#ea5455; cursor:pointer; font-size:1.2rem; margin-top:1rem;" onclick="this.closest('.card').remove()">&#10005;</button>
+            </div>
+            <label>Params (JSON)</label>
+            <textarea class="s-params" rows="2" placeholder='{"slot": "3", "well": "A1"}'>{}</textarea>
+        `;
+        container.appendChild(div);
+    }
+
+    async function submitRun() {
+        const name = document.getElementById("run-name").value.trim();
+        if (!name) { showToast("Enter a run name", "warning"); return; }
+        const entries = document.querySelectorAll("#steps-container .card");
+        if (entries.length === 0) { showToast("Add at least one step", "warning"); return; }
+        const steps = [];
+        for (const e of entries) {
+            let params = {};
+            try { params = JSON.parse(e.querySelector(".s-params").value || "{}"); } catch (err) {
+                showToast("Invalid JSON in step params", "error"); return;
+            }
+            steps.push({
+                name: e.querySelector(".s-name").value || `Step ${steps.length + 1}`,
+                kind: e.querySelector(".s-kind").value,
+                params: params,
+            });
+        }
+        const data = await apiPost("/api/runs", { name, steps });
+        if (data) {
+            showToast("Run created!", "success");
+            setTimeout(() => { window.location.href = "/runs/" + data.id; }, 500);
+        }
+    }
+
+    // Auto-refresh every 5 seconds
+    async function refreshDashboard() {
+        try {
+            const resp = await fetch("/api/runs");
+            if (!resp.ok) return;
+            const runs = await resp.json();
+            let running = 0, completed = 0, failed = 0;
+            runs.forEach(r => {
+                if (r.status === "running") running++;
+                else if (r.status === "completed") completed++;
+                else if (r.status === "failed") failed++;
+            });
+            document.getElementById("stat-total").textContent = runs.length;
+            document.getElementById("stat-running").textContent = running;
+            document.getElementById("stat-completed").textContent = completed;
+            document.getElementById("stat-failed").textContent = failed;
+        } catch (e) { /* ignore */ }
+    }
+    setInterval(refreshDashboard, 5000);
+
+    // Add first step by default
+    addStep();
+</script>
+{% endblock %}

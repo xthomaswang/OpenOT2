@@ -13,6 +13,7 @@ Requires the ``web`` optional extras::
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +168,12 @@ def create_app(
     # JSON API — runs
     # ------------------------------------------------------------------
 
+    @app.get("/api/runs")
+    async def list_runs_api():
+        """Return all runs as a JSON array."""
+        runs = store.list_runs()
+        return [r.model_dump(mode="json") for r in runs]
+
     @app.post("/api/runs")
     async def create_run(body: CreateRunRequest):
         steps = [RunStep(**s) for s in body.steps]
@@ -253,6 +260,52 @@ def create_app(
         app.state.active_runs.add(run_id)
         threading.Thread(target=_bg, daemon=True).start()
         return {"status": "resumed", "run_id": run_id}
+
+    @app.post("/api/runs/{run_id}/abort")
+    async def abort_run(run_id: str):
+        """Abort a running or paused run."""
+        try:
+            run = store.load_run(run_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Run not found")
+        if run.status not in (RunStatus.running, RunStatus.paused, RunStatus.pause_requested):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot abort run with status '{run.status.value}'",
+            )
+        run.status = RunStatus.aborted
+        run.updated_at = datetime.now(timezone.utc)
+        store.save_run(run)
+        return {"status": "aborted", "run_id": run_id}
+
+    # ------------------------------------------------------------------
+    # JSON API — system status
+    # ------------------------------------------------------------------
+
+    @app.get("/api/status")
+    async def get_status():
+        """Return system status: robot connection, loaded labware, etc."""
+        result: dict[str, Any] = {"robot_connected": client is not None}
+        if client:
+            try:
+                health = client.health(timeout=5)
+                result["robot_name"] = health.get("name", "OT-2")
+                result["robot_healthy"] = True
+            except Exception:
+                result["robot_healthy"] = False
+            result["labware_slots"] = dict(client.labware_by_slot) if client.labware_by_slot else {}
+            result["active_pipette"] = getattr(client, '_pipette_id', None)
+        return result
+
+    # ------------------------------------------------------------------
+    # HTML — setup wizard
+    # ------------------------------------------------------------------
+
+    @app.get("/setup", response_class=HTMLResponse)
+    async def setup_page(request: Request):
+        return templates.TemplateResponse(request, "setup.html", {
+            "has_client": client is not None,
+        })
 
     # ------------------------------------------------------------------
     # JSON API — calibration

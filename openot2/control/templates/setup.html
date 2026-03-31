@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block title %}OpenOT2 - Setup Wizard{% endblock %}
+{% block nav_setup %}active{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .wizard-progress {
+        display: flex; gap: 0; margin-bottom: 2rem; position: relative;
+    }
+    .wizard-step-indicator {
+        flex: 1; text-align: center; padding: 0.75rem 0.5rem; position: relative;
+        font-size: 0.85rem; color: #667788; cursor: pointer; transition: color 0.3s;
+    }
+    .wizard-step-indicator::before {
+        content: ''; display: block; width: 32px; height: 32px; margin: 0 auto 0.4rem;
+        border-radius: 50%; border: 2px solid #243b5c; line-height: 28px; text-align: center;
+        font-weight: 700; font-size: 0.9rem; background: #0d1b2e; color: #667788;
+        transition: all 0.3s;
+    }
+    .wizard-step-indicator:nth-child(1)::before { content: '1'; }
+    .wizard-step-indicator:nth-child(2)::before { content: '2'; }
+    .wizard-step-indicator:nth-child(3)::before { content: '3'; }
+    .wizard-step-indicator:nth-child(4)::before { content: '4'; }
+    .wizard-step-indicator.active { color: #4ea8ff; }
+    .wizard-step-indicator.active::before { border-color: #4ea8ff; color: #4ea8ff; }
+    .wizard-step-indicator.done { color: #28c76f; }
+    .wizard-step-indicator.done::before { border-color: #28c76f; background: #28c76f; color: #fff; content: '\2713'; }
+    .wizard-panel { display: none; }
+    .wizard-panel.active { display: block; }
+    .wizard-nav { display: flex; justify-content: space-between; margin-top: 2rem; }
+    /* Deck grid */
+    .deck-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;
+        max-width: 500px; margin: 1rem auto;
+    }
+    .deck-slot {
+        background: #0d1b2e; border: 1px solid #243b5c; border-radius: 8px;
+        padding: 0.75rem; text-align: center; min-height: 70px;
+    }
+    .deck-slot .slot-num { font-weight: 700; color: #4ea8ff; font-size: 0.9rem; }
+    .deck-slot .slot-lw { font-size: 0.75rem; color: #8899aa; margin-top: 0.25rem; word-break: break-all; }
+    .deck-slot.occupied { border-color: #28c76f40; }
+    .deck-slot.trash { border-color: #ea545540; }
+    /* Connection status */
+    .conn-status {
+        display: flex; align-items: center; gap: 1rem; padding: 1.5rem;
+        background: #1a2d4a; border-radius: 10px; margin-bottom: 1rem;
+    }
+    .conn-icon { font-size: 2rem; }
+    .conn-icon.ok { color: #28c76f; }
+    .conn-icon.fail { color: #ea5455; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="font-size:1.5rem; margin-bottom:1.5rem;">Setup Wizard</h1>
+
+<!-- Progress indicators -->
+<div class="wizard-progress">
+    <div class="wizard-step-indicator active" onclick="goToStep(0)">Connection</div>
+    <div class="wizard-step-indicator" onclick="goToStep(1)">Deck Config</div>
+    <div class="wizard-step-indicator" onclick="goToStep(2)">Calibration</div>
+    <div class="wizard-step-indicator" onclick="goToStep(3)">Create Run</div>
+</div>
+
+<!-- Step 1: Connection Check -->
+<div class="wizard-panel active" id="panel-0">
+    <div class="card">
+        <h2 style="margin-bottom:1rem;">Connection Check</h2>
+        <div class="conn-status" id="conn-status">
+            <div class="conn-icon" id="conn-icon">&#8987;</div>
+            <div>
+                <div style="font-weight:600;" id="conn-title">Checking connection...</div>
+                <div style="font-size:0.85rem; color:#8899aa;" id="conn-detail">Querying robot status</div>
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="checkConnection()">Refresh</button>
+    </div>
+</div>
+
+<!-- Step 2: Deck Configuration -->
+<div class="wizard-panel" id="panel-1">
+    <div class="card">
+        <h2 style="margin-bottom:1rem;">Deck Configuration</h2>
+        <p style="color:#8899aa; margin-bottom:1rem;">OT-2 deck layout. Slot 12 is the fixed trash.</p>
+        <div class="deck-grid" id="deck-grid">
+            <!-- Slots 10, 11, 12 (top row) -->
+            <div class="deck-slot" data-slot="10"><div class="slot-num">10</div><div class="slot-lw" id="slot-10">empty</div></div>
+            <div class="deck-slot" data-slot="11"><div class="slot-num">11</div><div class="slot-lw" id="slot-11">empty</div></div>
+            <div class="deck-slot trash" data-slot="12"><div class="slot-num">12</div><div class="slot-lw">Trash</div></div>
+            <!-- Slots 7, 8, 9 -->
+            <div class="deck-slot" data-slot="7"><div class="slot-num">7</div><div class="slot-lw" id="slot-7">empty</div></div>
+            <div class="deck-slot" data-slot="8"><div class="slot-num">8</div><div class="slot-lw" id="slot-8">empty</div></div>
+            <div class="deck-slot" data-slot="9"><div class="slot-num">9</div><div class="slot-lw" id="slot-9">empty</div></div>
+            <!-- Slots 4, 5, 6 -->
+            <div class="deck-slot" data-slot="4"><div class="slot-num">4</div><div class="slot-lw" id="slot-4">empty</div></div>
+            <div class="deck-slot" data-slot="5"><div class="slot-num">5</div><div class="slot-lw" id="slot-5">empty</div></div>
+            <div class="deck-slot" data-slot="6"><div class="slot-num">6</div><div class="slot-lw" id="slot-6">empty</div></div>
+            <!-- Slots 1, 2, 3 -->
+            <div class="deck-slot" data-slot="1"><div class="slot-num">1</div><div class="slot-lw" id="slot-1">empty</div></div>
+            <div class="deck-slot" data-slot="2"><div class="slot-num">2</div><div class="slot-lw" id="slot-2">empty</div></div>
+            <div class="deck-slot" data-slot="3"><div class="slot-num">3</div><div class="slot-lw" id="slot-3">empty</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Step 3: Calibration Status -->
+<div class="wizard-panel" id="panel-2">
+    <div class="card">
+        <h2 style="margin-bottom:1rem;">Calibration Status</h2>
+        <div id="cal-status" style="color:#8899aa;">Checking calibration profile...</div>
+        <div id="cal-targets" style="margin-top:1rem;"></div>
+        <div style="margin-top:1.5rem;">
+            <a href="/calibration" class="btn btn-primary" style="text-decoration:none;">Go to Calibration</a>
+        </div>
+    </div>
+</div>
+
+<!-- Step 4: Create Run -->
+<div class="wizard-panel" id="panel-3">
+    <div class="card">
+        <h2 style="margin-bottom:1rem;">Create Run</h2>
+        <label style="display:block; margin-bottom:0.25rem; color:#8899aa; font-size:0.85rem;">Run Name</label>
+        <input type="text" id="wiz-run-name" placeholder="My experiment" style="width:100%; margin-bottom:1rem;">
+
+        <label style="display:block; margin-bottom:0.5rem; color:#8899aa; font-size:0.85rem;">Preset Templates</label>
+        <div style="display:flex; gap:0.75rem; margin-bottom:1.5rem; flex-wrap:wrap;">
+            <button class="btn" style="background:#243b5c;" onclick="loadPreset('transfer')">Transfer</button>
+            <button class="btn" style="background:#243b5c;" onclick="loadPreset('mix')">Mix</button>
+            <button class="btn" style="background:#243b5c;" onclick="loadPreset('serial_dilution')">Serial Dilution</button>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <label style="color:#8899aa; font-size:0.85rem; margin:0;">Steps</label>
+            <button class="btn btn-primary" style="padding:0.25rem 0.6rem; font-size:0.8rem;" onclick="wizAddStep()">+ Add</button>
+        </div>
+        <div id="wiz-steps"></div>
+
+        <button class="btn btn-success" style="margin-top:1.5rem;" onclick="wizSubmitRun()">Create & Go</button>
+    </div>
+</div>
+
+<!-- Navigation -->
+<div class="wizard-nav">
+    <button class="btn" style="background:#243b5c;" id="wiz-prev" onclick="navigate(-1)" disabled>Previous</button>
+    <button class="btn btn-primary" id="wiz-next" onclick="navigate(1)">Next</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentStep = 0;
+    const totalSteps = 4;
+    let wizStepCount = 0;
+
+    function goToStep(idx) {
+        currentStep = idx;
+        renderStep();
+    }
+
+    function navigate(dir) {
+        currentStep = Math.max(0, Math.min(totalSteps - 1, currentStep + dir));
+        renderStep();
+    }
+
+    function renderStep() {
+        document.querySelectorAll(".wizard-panel").forEach((p, i) => {
+            p.classList.toggle("active", i === currentStep);
+        });
+        document.querySelectorAll(".wizard-step-indicator").forEach((ind, i) => {
+            ind.classList.remove("active", "done");
+            if (i < currentStep) ind.classList.add("done");
+            else if (i === currentStep) ind.classList.add("active");
+        });
+        document.getElementById("wiz-prev").disabled = currentStep === 0;
+        document.getElementById("wiz-next").style.display = currentStep === totalSteps - 1 ? "none" : "";
+    }
+
+    async function checkConnection() {
+        const icon = document.getElementById("conn-icon");
+        const title = document.getElementById("conn-title");
+        const detail = document.getElementById("conn-detail");
+        icon.innerHTML = "&#8987;";
+        icon.className = "conn-icon";
+        title.textContent = "Checking...";
+        try {
+            const resp = await fetch("/api/status");
+            const data = await resp.json();
+            if (data.robot_connected && data.robot_healthy !== false) {
+                icon.innerHTML = "&#10003;";
+                icon.className = "conn-icon ok";
+                title.textContent = data.robot_name || "Connected";
+                detail.textContent = "Robot is online and healthy";
+                // Populate deck
+                if (data.labware_slots) {
+                    for (const [slot, lwId] of Object.entries(data.labware_slots)) {
+                        const el = document.getElementById("slot-" + slot);
+                        if (el) { el.textContent = lwId; el.closest(".deck-slot").classList.add("occupied"); }
+                    }
+                }
+            } else if (data.robot_connected) {
+                icon.innerHTML = "&#9888;";
+                icon.className = "conn-icon fail";
+                title.textContent = "Connection Issues";
+                detail.textContent = "Robot connected but not responding to health check";
+            } else {
+                icon.innerHTML = "&#10007;";
+                icon.className = "conn-icon fail";
+                title.textContent = "Not Connected";
+                detail.textContent = 'Start server with --robot <IP> to connect';
+            }
+        } catch (e) {
+            icon.innerHTML = "&#10007;";
+            icon.className = "conn-icon fail";
+            title.textContent = "Error";
+            detail.textContent = e.message;
+        }
+    }
+
+    async function checkCalibration() {
+        try {
+            const resp = await fetch("/api/calibration/profile");
+            if (resp.ok) {
+                const profile = await resp.json();
+                document.getElementById("cal-status").innerHTML =
+                    '<span style="color:#28c76f;">&#10003; Profile loaded: ' + profile.name + '</span>';
+                let html = "";
+                (profile.targets || []).forEach((t, i) => {
+                    const o = t.offset || {};
+                    html += `<div class="card" style="padding:0.5rem 0.75rem; margin-bottom:0.5rem;">
+                        <strong>${t.name}</strong> (${t.action}) &mdash; Slot ${t.labware_slot}, Well ${t.well}
+                        <span style="font-family:monospace; color:#8899aa; margin-left:0.5rem;">
+                            offset: ${(o.x||0).toFixed(2)}, ${(o.y||0).toFixed(2)}, ${(o.z||0).toFixed(2)}
+                        </span>
+                    </div>`;
+                });
+                document.getElementById("cal-targets").innerHTML = html;
+            } else {
+                document.getElementById("cal-status").innerHTML =
+                    '<span style="color:#ff9f43;">&#9888; No calibration profile loaded. Go to Calibration to set one up.</span>';
+            }
+        } catch (e) {
+            document.getElementById("cal-status").textContent = "Could not check calibration status.";
+        }
+    }
+
+    function wizAddStep(name, kind, params) {
+        wizStepCount++;
+        const container = document.getElementById("wiz-steps");
+        const div = document.createElement("div");
+        div.className = "card";
+        div.style.cssText = "padding:0.75rem; margin-bottom:0.5rem;";
+        div.innerHTML = `
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <input class="ws-name" value="${name || ''}" placeholder="Step name" style="flex:1;">
+                <select class="ws-kind" style="flex:1;">
+                    <option value="pick_up_tip" ${kind==='pick_up_tip'?'selected':''}>pick_up_tip</option>
+                    <option value="aspirate" ${kind==='aspirate'?'selected':''}>aspirate</option>
+                    <option value="dispense" ${kind==='dispense'?'selected':''}>dispense</option>
+                    <option value="drop_tip" ${kind==='drop_tip'?'selected':''}>drop_tip</option>
+                    <option value="mix" ${kind==='mix'?'selected':''}>mix</option>
+                    <option value="blow_out" ${kind==='blow_out'?'selected':''}>blow_out</option>
+                    <option value="home" ${kind==='home'?'selected':''}>home</option>
+                    <option value="custom" ${kind==='custom'?'selected':''}>custom</option>
+                </select>
+                <button style="background:none;border:none;color:#ea5455;cursor:pointer;font-size:1.1rem;" onclick="this.closest('.card').remove()">&#10005;</button>
+            </div>
+            <textarea class="ws-params" rows="1" style="width:100%;margin-top:0.4rem;font-family:monospace;font-size:0.8rem;" placeholder='{"slot":"3","well":"A1"}'>${params ? JSON.stringify(params) : '{}'}</textarea>
+        `;
+        container.appendChild(div);
+    }
+
+    function loadPreset(preset) {
+        const container = document.getElementById("wiz-steps");
+        container.innerHTML = "";
+        wizStepCount = 0;
+        if (preset === "transfer") {
+            wizAddStep("Pick up tip", "pick_up_tip", {well: "A1"});
+            wizAddStep("Aspirate", "aspirate", {slot: "1", well: "A1", volume: 100});
+            wizAddStep("Dispense", "dispense", {slot: "2", well: "A1", volume: 100});
+            wizAddStep("Drop tip", "drop_tip", {});
+        } else if (preset === "mix") {
+            wizAddStep("Pick up tip", "pick_up_tip", {well: "A1"});
+            wizAddStep("Mix", "mix", {slot: "1", well: "A1", volume: 200, cycles: 3});
+            wizAddStep("Drop tip", "drop_tip", {});
+        } else if (preset === "serial_dilution") {
+            wizAddStep("Pick up tip", "pick_up_tip", {well: "A1"});
+            wizAddStep("Aspirate stock", "aspirate", {slot: "1", well: "A1", volume: 100});
+            wizAddStep("Dispense to A1", "dispense", {slot: "2", well: "A1", volume: 100});
+            wizAddStep("Mix A1", "mix", {slot: "2", well: "A1", volume: 100, cycles: 3});
+            wizAddStep("Aspirate from A1", "aspirate", {slot: "2", well: "A1", volume: 50});
+            wizAddStep("Dispense to A2", "dispense", {slot: "2", well: "A2", volume: 50});
+            wizAddStep("Drop tip", "drop_tip", {});
+        }
+        showToast("Loaded " + preset + " preset", "info");
+    }
+
+    async function wizSubmitRun() {
+        const name = document.getElementById("wiz-run-name").value.trim();
+        if (!name) { showToast("Enter a run name", "warning"); return; }
+        const entries = document.querySelectorAll("#wiz-steps .card");
+        if (entries.length === 0) { showToast("Add at least one step", "warning"); return; }
+        const steps = [];
+        for (const e of entries) {
+            let params = {};
+            try { params = JSON.parse(e.querySelector(".ws-params").value || "{}"); } catch (err) {
+                showToast("Invalid JSON in step params", "error"); return;
+            }
+            steps.push({
+                name: e.querySelector(".ws-name").value || `Step ${steps.length + 1}`,
+                kind: e.querySelector(".ws-kind").value,
+                params: params,
+            });
+        }
+        const data = await apiPost("/api/runs", { name, steps });
+        if (data) {
+            showToast("Run created!", "success");
+            setTimeout(() => { window.location.href = "/runs/" + data.id; }, 500);
+        }
+    }
+
+    // Init
+    checkConnection();
+    checkCalibration();
+</script>
+{% endblock %}

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}OpenOT2{% endblock %}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0a1628;
+            color: #e0e6ed;
+            display: flex;
+            min-height: 100vh;
+        }
+        /* Sidebar */
+        .sidebar {
+            width: 240px;
+            background: #0d1b2e;
+            border-right: 1px solid #1a2d4a;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+        }
+        .sidebar-logo {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1a2d4a;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #4ea8ff;
+            letter-spacing: 0.5px;
+        }
+        .sidebar-logo span { color: #7ec8ff; font-weight: 400; }
+        .sidebar-nav { flex: 1; padding: 1rem 0; }
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1.25rem;
+            color: #8899aa;
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        .sidebar-nav a:hover {
+            color: #e0e6ed;
+            background: rgba(78, 168, 255, 0.08);
+        }
+        .sidebar-nav a.active {
+            color: #4ea8ff;
+            background: rgba(78, 168, 255, 0.12);
+            border-left-color: #4ea8ff;
+        }
+        .sidebar-nav a .icon {
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        .sidebar-status {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid #1a2d4a;
+            font-size: 0.85rem;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        .status-dot.connected { background: #28c76f; box-shadow: 0 0 6px rgba(40, 199, 111, 0.5); }
+        .status-dot.disconnected { background: #ea5455; }
+        .robot-status-detail {
+            display: none;
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: #1a2d4a;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #8899aa;
+        }
+        .robot-status-detail.show { display: block; }
+        /* Main content */
+        .main-content {
+            margin-left: 240px;
+            flex: 1;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+        /* Cards */
+        .card {
+            background: #1a2d4a;
+            border: 1px solid #243b5c;
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .badge-draft { background: rgba(108, 117, 125, 0.2); color: #8899aa; }
+        .badge-ready { background: rgba(108, 117, 125, 0.2); color: #8899aa; }
+        .badge-running { background: rgba(78, 168, 255, 0.2); color: #4ea8ff; }
+        .badge-paused, .badge-pause_requested { background: rgba(255, 159, 67, 0.2); color: #ff9f43; }
+        .badge-completed, .badge-succeeded { background: rgba(40, 199, 111, 0.2); color: #28c76f; }
+        .badge-failed { background: rgba(234, 84, 85, 0.2); color: #ea5455; }
+        .badge-aborted { background: rgba(234, 84, 85, 0.2); color: #ea5455; }
+        .badge-pending { background: rgba(108, 117, 125, 0.15); color: #667788; }
+        .badge-skipped { background: rgba(108, 117, 125, 0.15); color: #667788; }
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1.25rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #fff;
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary { background: #4ea8ff; }
+        .btn-primary:hover:not(:disabled) { background: #3d8de0; }
+        .btn-success { background: #28c76f; }
+        .btn-success:hover:not(:disabled) { background: #1fa85c; }
+        .btn-warning { background: #ff9f43; color: #1a1a1a; }
+        .btn-warning:hover:not(:disabled) { background: #e08a30; }
+        .btn-danger { background: #ea5455; }
+        .btn-danger:hover:not(:disabled) { background: #d03e3f; }
+        /* Progress bar */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #0d1b2e;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ea8ff, #28c76f);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .toast {
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+            max-width: 400px;
+        }
+        .toast-success { background: #28c76f; }
+        .toast-error { background: #ea5455; }
+        .toast-warning { background: #ff9f43; color: #1a1a1a; }
+        .toast-info { background: #4ea8ff; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: #1a2d4a;
+            border: 1px solid #243b5c;
+            border-radius: 12px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal h2 { margin-bottom: 1.5rem; color: #e0e6ed; }
+        .modal label { display: block; margin: 0.75rem 0 0.25rem; color: #8899aa; font-size: 0.85rem; }
+        .modal input, .modal select, .modal textarea {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: #0d1b2e;
+            border: 1px solid #243b5c;
+            border-radius: 6px;
+            color: #e0e6ed;
+            font-size: 0.9rem;
+        }
+        .modal input:focus, .modal select:focus, .modal textarea:focus {
+            outline: none;
+            border-color: #4ea8ff;
+        }
+        .modal textarea { font-family: monospace; min-height: 60px; resize: vertical; }
+        /* Form elements for dark theme */
+        input, select, textarea {
+            background: #0d1b2e;
+            border: 1px solid #243b5c;
+            border-radius: 6px;
+            color: #e0e6ed;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #4ea8ff;
+        }
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar { width: 60px; }
+            .sidebar-logo span, .sidebar-nav a span, .sidebar-status span { display: none; }
+            .sidebar-logo { font-size: 1rem; padding: 1rem 0.5rem; text-align: center; }
+            .sidebar-nav a { justify-content: center; padding: 0.75rem; }
+            .main-content { margin-left: 60px; padding: 1rem; }
+        }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-logo">Open<span>OT2</span></div>
+        <nav class="sidebar-nav">
+            <a href="/" class="{% block nav_dashboard %}{% endblock %}">
+                <span class="icon">&#9632;</span>
+                <span>Dashboard</span>
+            </a>
+            <a href="/setup" class="{% block nav_setup %}{% endblock %}">
+                <span class="icon">&#9881;</span>
+                <span>Setup</span>
+            </a>
+            <a href="/calibration" class="{% block nav_calibration %}{% endblock %}">
+                <span class="icon">&#8982;</span>
+                <span>Calibration</span>
+            </a>
+        </nav>
+        <div class="sidebar-status" onclick="toggleRobotDetail()" style="cursor:pointer;">
+            <span class="status-dot disconnected" id="robot-dot"></span>
+            <span id="robot-label">Disconnected</span>
+            <div class="robot-status-detail" id="robot-detail"></div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        function showToast(message, type = "info") {
+            const container = document.getElementById("toast-container");
+            const toast = document.createElement("div");
+            toast.className = "toast toast-" + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => { toast.remove(); }, 3000);
+        }
+
+        async function apiPost(url, body) {
+            const resp = await fetch(url, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                showToast(data.detail || "Error", "error");
+                return null;
+            }
+            return data;
+        }
+
+        function toggleRobotDetail() {
+            document.getElementById("robot-detail").classList.toggle("show");
+        }
+
+        async function pollRobotStatus() {
+            try {
+                const resp = await fetch("/api/status");
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const dot = document.getElementById("robot-dot");
+                const label = document.getElementById("robot-label");
+                const detail = document.getElementById("robot-detail");
+                if (data.robot_connected && data.robot_healthy !== false) {
+                    dot.className = "status-dot connected";
+                    label.textContent = data.robot_name || "Connected";
+                    let html = "";
+                    if (data.labware_slots && Object.keys(data.labware_slots).length > 0) {
+                        html += "<div>Labware: " + Object.keys(data.labware_slots).join(", ") + "</div>";
+                    }
+                    if (data.active_pipette) {
+                        html += "<div>Pipette: " + data.active_pipette + "</div>";
+                    }
+                    detail.innerHTML = html || "<div>No labware loaded</div>";
+                } else {
+                    dot.className = "status-dot disconnected";
+                    label.textContent = "Disconnected";
+                    detail.innerHTML = "<div>Start with --robot IP to connect</div>";
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        pollRobotStatus();
+        setInterval(pollRobotStatus, 10000);
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
