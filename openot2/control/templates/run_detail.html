@@ -1,143 +1,359 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>OpenOT2 - Run {{ run.name }}</title>
-    <style>
-        body { font-family: system-ui, sans-serif; margin: 2rem; background: #fafafa; }
-        h1, h2 { color: #333; }
-        nav { margin-bottom: 1.5rem; }
-        nav a { margin-right: 1rem; color: #0066cc; text-decoration: none; }
-        nav a:hover { text-decoration: underline; }
-        .info { margin-bottom: 1rem; }
-        .info span { margin-right: 2rem; }
-        .status { font-weight: bold; }
-        .status-completed { color: #28a745; }
-        .status-running { color: #007bff; }
-        .status-paused { color: #ffc107; }
-        .status-failed { color: #dc3545; }
-        .status-draft { color: #6c757d; }
-        .status-pause_requested { color: #e0a800; }
-        table { border-collapse: collapse; width: 100%; max-width: 900px; margin-bottom: 1.5rem; }
-        th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; }
-        th { background: #f0f0f0; }
-        button { padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
-        button:hover { background: #e9e9e9; }
-        button.primary { background: #007bff; color: #fff; border-color: #007bff; }
-        button.primary:hover { background: #0056b3; }
-        button.warning { background: #ffc107; color: #333; border-color: #ffc107; }
-        .eta { font-size: 1.1rem; margin: 0.5rem 0 1rem; }
-        .events { max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 0.5rem; font-size: 0.85rem; font-family: monospace; background: #fff; }
-        .events p { margin: 0.15rem 0; }
-        #feedback { margin-top: 0.5rem; color: #666; font-style: italic; }
-    </style>
-</head>
-<body>
-    <nav>
-        <a href="/">Runs</a>
-        <a href="/calibration">Calibration</a>
-    </nav>
+{% extends "base.html" %}
+{% block title %}OpenOT2 - {{ run.name }}{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
 
+{% block extra_styles %}
+<style>
+    .run-header { display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+    .run-header h1 { font-size:1.5rem; flex:1; }
+    .run-meta { display:flex; gap:2rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+    .run-meta .meta-item { text-align:center; }
+    .run-meta .meta-value { font-size:1.5rem; font-weight:700; }
+    .run-meta .meta-label { font-size:0.8rem; color:#8899aa; }
+    .controls { display:flex; gap:0.5rem; margin-bottom:2rem; flex-wrap:wrap; }
+    /* Step timeline */
+    .step-timeline { display:flex; flex-direction:column; gap:0.75rem; margin-bottom:2rem; }
+    .step-card {
+        background:#1a2d4a; border:1px solid #243b5c; border-radius:8px;
+        padding:1rem; display:flex; align-items:center; gap:1rem;
+        transition: border-color 0.3s;
+    }
+    .step-card.active { border-color:#4ea8ff; box-shadow:0 0 12px rgba(78,168,255,0.15); }
+    .step-icon {
+        width:36px; height:36px; border-radius:50%; display:flex;
+        align-items:center; justify-content:center; font-size:1rem; flex-shrink:0;
+    }
+    .step-icon.pending { background:#243b5c; color:#667788; }
+    .step-icon.running { background:rgba(78,168,255,0.2); color:#4ea8ff; animation:pulse 1.5s infinite; }
+    .step-icon.succeeded { background:rgba(40,199,111,0.2); color:#28c76f; }
+    .step-icon.failed { background:rgba(234,84,85,0.2); color:#ea5455; }
+    .step-icon.skipped { background:#243b5c; color:#667788; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+    .step-body { flex:1; min-width:0; }
+    .step-name { font-weight:600; font-size:0.95rem; }
+    .step-detail { font-size:0.8rem; color:#8899aa; margin-top:0.2rem; cursor:pointer; }
+    .step-expand {
+        display:none; margin-top:0.75rem; padding:0.75rem;
+        background:#0d1b2e; border-radius:6px; font-family:monospace;
+        font-size:0.8rem; white-space:pre-wrap; word-break:break-all;
+        max-height:200px; overflow-y:auto;
+    }
+    .step-expand.show { display:block; }
+    /* Chart area */
+    .chart-container { background:#1a2d4a; border:1px solid #243b5c; border-radius:10px; padding:1.25rem; margin-bottom:2rem; }
+    /* Events log */
+    .events-log {
+        background:#0d1b2e; border:1px solid #243b5c; border-radius:8px;
+        padding:1rem; max-height:350px; overflow-y:auto; font-family:monospace;
+        font-size:0.82rem; line-height:1.6;
+    }
+    .events-log .ev { padding:0.15rem 0; }
+    .ev-run_started, .ev-run_completed, .ev-step_succeeded { color:#28c76f; }
+    .ev-step_started { color:#4ea8ff; }
+    .ev-step_failed, .ev-run_failed { color:#ea5455; }
+    .ev-pause_requested, .ev-run_paused { color:#ff9f43; }
+    /* Filter buttons */
+    .ev-filters { display:flex; gap:0.5rem; margin-bottom:0.75rem; }
+    .ev-filters button {
+        padding:0.25rem 0.75rem; border:1px solid #243b5c; border-radius:20px;
+        background:transparent; color:#8899aa; cursor:pointer; font-size:0.8rem;
+    }
+    .ev-filters button.active { background:#4ea8ff; color:#fff; border-color:#4ea8ff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="run-header">
     <h1>{{ run.name }}</h1>
+    <span class="badge badge-{{ run.status.value }}" id="run-badge" style="font-size:0.9rem; padding:0.35rem 1rem;">{{ run.status.value }}</span>
+</div>
 
-    <div class="info">
-        <span>Status: <span id="run-status" class="status status-{{ run.status.value }}">{{ run.status.value }}</span></span>
-        <span>Progress: <span id="run-progress">{{ run.current_step_index }}</span> / <span id="run-total">{{ run.steps|length }}</span></span>
+<!-- Progress -->
+<div class="card" style="margin-bottom:1.5rem; padding:1rem 1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+        <span style="font-size:0.85rem; color:#8899aa;">Progress</span>
+        <span id="progress-text" style="font-size:0.85rem; font-weight:600;">{{ run.current_step_index }} / {{ run.steps|length }}</span>
     </div>
-
-    <div class="eta" id="run-eta">
-        {% if run.eta_seconds is not none %}
-            ETA: {{ "%.0f"|format(run.eta_seconds) }}s remaining
-        {% else %}
-            ETA: --
-        {% endif %}
+    <div class="progress-bar" style="height:10px;">
+        <div class="fill" id="progress-fill" style="width:{{ (run.current_step_index / run.steps|length * 100) if run.steps|length > 0 else 0 }}%"></div>
     </div>
+</div>
 
-    <div style="margin-bottom: 1.5rem;">
-        <button class="primary" onclick="startRun()">Start</button>
-        <button class="warning" onclick="pauseRun()">Pause</button>
-        <button class="primary" onclick="resumeRun()">Resume</button>
-        <div id="feedback"></div>
+<!-- Meta -->
+<div class="run-meta">
+    <div class="meta-item card" style="padding:0.75rem 1.5rem;">
+        <div class="meta-value" id="meta-eta">{% if run.eta_seconds is not none %}{{ "%.0f"|format(run.eta_seconds) }}s{% else %}--{% endif %}</div>
+        <div class="meta-label">ETA Remaining</div>
     </div>
+    <div class="meta-item card" style="padding:0.75rem 1.5rem;">
+        <div class="meta-value" id="meta-elapsed">--</div>
+        <div class="meta-label">Elapsed</div>
+    </div>
+    <div class="meta-item card" style="padding:0.75rem 1.5rem;">
+        <div class="meta-value" id="meta-steps">{{ run.current_step_index }}/{{ run.steps|length }}</div>
+        <div class="meta-label">Steps Done</div>
+    </div>
+</div>
 
-    <h2>Steps</h2>
-    <table id="steps-table">
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Kind</th>
-                <th>Status</th>
-                <th>Duration</th>
-            </tr>
-        </thead>
-        <tbody>
+<!-- Controls -->
+<div class="controls">
+    <button class="btn btn-success" id="btn-start" onclick="doAction('start')">&#9654; Start</button>
+    <button class="btn btn-warning" id="btn-pause" onclick="doAction('pause')">&#9646;&#9646; Pause</button>
+    <button class="btn btn-primary" id="btn-resume" onclick="doAction('resume')">&#9654; Resume</button>
+    <button class="btn btn-danger" id="btn-abort" onclick="doAction('abort')">&#9724; Abort</button>
+</div>
+
+<!-- Two-column: Steps + Chart -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:2rem;">
+    <!-- Step Timeline -->
+    <div>
+        <h2 style="font-size:1.1rem; margin-bottom:1rem;">Steps</h2>
+        <div class="step-timeline" id="step-timeline">
             {% for step in run.steps %}
-            <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ step.name }}</td>
-                <td>{{ step.kind }}</td>
-                <td class="status status-{{ step.status.value }}">{{ step.status.value }}</td>
-                <td>{% if step.duration_seconds is not none %}{{ "%.2f"|format(step.duration_seconds) }}s{% else %}--{% endif %}</td>
-            </tr>
+            <div class="step-card {% if step.status.value == 'running' %}active{% endif %}" data-idx="{{ loop.index0 }}">
+                <div class="step-icon {{ step.status.value }}">
+                    {% if step.status.value == 'pending' %}&#9675;
+                    {% elif step.status.value == 'running' %}&#9881;
+                    {% elif step.status.value == 'succeeded' %}&#10003;
+                    {% elif step.status.value == 'failed' %}&#10007;
+                    {% else %}&#8722;{% endif %}
+                </div>
+                <div class="step-body">
+                    <div class="step-name">{{ step.name }} <span class="badge badge-{{ step.status.value }}" style="font-size:0.7rem; padding:0.15rem 0.5rem;">{{ step.kind }}</span></div>
+                    <div class="step-detail" onclick="this.nextElementSibling.classList.toggle('show')">
+                        {% if step.duration_seconds is not none %}{{ "%.2f"|format(step.duration_seconds) }}s{% else %}--{% endif %}
+                        &mdash; click to expand
+                    </div>
+                    <div class="step-expand">Params: {{ step.params | tojson }}{% if step.output %}
+Output: {{ step.output | tojson }}{% endif %}{% if step.error %}
+Error: {{ step.error }}{% endif %}</div>
+                </div>
+            </div>
             {% endfor %}
-        </tbody>
-    </table>
+        </div>
+    </div>
 
-    <h2>Events</h2>
-    <div class="events" id="events-log">
+    <!-- Chart -->
+    <div>
+        <h2 style="font-size:1.1rem; margin-bottom:1rem;">Step Duration</h2>
+        <div class="chart-container">
+            <canvas id="durationChart" height="280"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Events Log -->
+<div style="margin-bottom:2rem;">
+    <h2 style="font-size:1.1rem; margin-bottom:0.75rem;">Event Log</h2>
+    <div class="ev-filters">
+        <button class="active" onclick="filterEvents('all', this)">All</button>
+        <button onclick="filterEvents('error', this)">Errors</button>
+        <button onclick="filterEvents('step', this)">Steps</button>
+    </div>
+    <div class="events-log" id="events-log">
         {% for event in events %}
-        <p>[{{ event.timestamp.strftime('%H:%M:%S') }}] {{ event.type }}: {{ event.message }}</p>
+        <div class="ev ev-{{ event.type }}" data-type="{{ event.type }}">[{{ event.timestamp.strftime('%H:%M:%S') }}] {{ event.type }}: {{ event.message }}</div>
         {% endfor %}
         {% if not events %}
-        <p>No events yet.</p>
+        <div class="ev" style="color:#667788;">No events yet.</div>
         {% endif %}
     </div>
+</div>
+{% endblock %}
 
-    <script>
-        const runId = "{{ run.id }}";
+{% block scripts %}
+<script>
+    const runId = "{{ run.id }}";
+    const runCreatedAt = new Date("{{ run.created_at.isoformat() }}");
+    let currentFilter = "all";
+    let durationChart;
+    let polling = true;
 
-        function showFeedback(msg) {
-            document.getElementById("feedback").textContent = msg;
-            setTimeout(() => { document.getElementById("feedback").textContent = ""; }, 3000);
-        }
+    // Icon map
+    const statusIcons = { pending: "&#9675;", running: "&#9881;", succeeded: "&#10003;", failed: "&#10007;", skipped: "&#8722;" };
 
-        async function startRun() {
-            const resp = await fetch(`/api/runs/${runId}/start`, { method: "POST" });
-            const data = await resp.json();
-            showFeedback(resp.ok ? "Run started" : (data.detail || "Error"));
-        }
+    // Button state
+    function updateButtons(status) {
+        const s = document.getElementById("btn-start");
+        const p = document.getElementById("btn-pause");
+        const r = document.getElementById("btn-resume");
+        const a = document.getElementById("btn-abort");
+        s.disabled = !(status === "draft" || status === "ready");
+        p.disabled = status !== "running";
+        r.disabled = status !== "paused";
+        a.disabled = !(status === "running" || status === "paused" || status === "pause_requested");
+    }
 
-        async function pauseRun() {
-            const resp = await fetch(`/api/runs/${runId}/pause`, { method: "POST" });
-            const data = await resp.json();
-            showFeedback(resp.ok ? "Pause requested" : (data.detail || "Error"));
-        }
+    async function doAction(action) {
+        const data = await apiPost(`/api/runs/${runId}/${action}`, {});
+        if (data) showToast(action.charAt(0).toUpperCase() + action.slice(1) + " OK", "success");
+    }
 
-        async function resumeRun() {
-            const resp = await fetch(`/api/runs/${runId}/resume`, { method: "POST" });
-            const data = await resp.json();
-            showFeedback(resp.ok ? "Run resumed" : (data.detail || "Error"));
-        }
+    // Filter events
+    function filterEvents(filter, btn) {
+        currentFilter = filter;
+        document.querySelectorAll(".ev-filters button").forEach(b => b.classList.remove("active"));
+        if (btn) btn.classList.add("active");
+        document.querySelectorAll("#events-log .ev").forEach(el => {
+            const t = el.dataset.type || "";
+            if (filter === "all") el.style.display = "";
+            else if (filter === "error") el.style.display = (t.includes("fail") || t.includes("error")) ? "" : "none";
+            else if (filter === "step") el.style.display = t.startsWith("step_") ? "" : "none";
+        });
+    }
 
-        async function pollStatus() {
-            try {
-                const resp = await fetch(`/api/runs/${runId}`);
-                if (!resp.ok) return;
-                const run = await resp.json();
-                document.getElementById("run-status").textContent = run.status;
-                document.getElementById("run-status").className = "status status-" + run.status;
-                document.getElementById("run-progress").textContent = run.current_step_index;
-                document.getElementById("run-total").textContent = run.steps.length;
-                if (run.eta_seconds !== null) {
-                    document.getElementById("run-eta").textContent = "ETA: " + Math.round(run.eta_seconds) + "s remaining";
-                } else {
-                    document.getElementById("run-eta").textContent = "ETA: --";
+    // Chart setup
+    function initChart(steps) {
+        const ctx = document.getElementById("durationChart").getContext("2d");
+        const labels = steps.map((s, i) => s.name || `Step ${i+1}`);
+        const durations = steps.map(s => s.duration_seconds || 0);
+        const colors = steps.map(s => {
+            if (s.status === "succeeded") return "rgba(40,199,111,0.7)";
+            if (s.status === "running") return "rgba(78,168,255,0.7)";
+            if (s.status === "failed") return "rgba(234,84,85,0.7)";
+            return "rgba(108,117,125,0.3)";
+        });
+        const borderColors = steps.map(s => {
+            if (s.status === "succeeded") return "#28c76f";
+            if (s.status === "running") return "#4ea8ff";
+            if (s.status === "failed") return "#ea5455";
+            return "#667788";
+        });
+        const borderDash = steps.map(s => s.status === "pending" ? [5, 5] : []);
+
+        durationChart = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Duration (s)",
+                    data: durations,
+                    backgroundColor: colors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    borderDash: undefined,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: "#8899aa", font: { size: 10 } }, grid: { color: "#243b5c" } },
+                    y: { ticks: { color: "#8899aa" }, grid: { color: "#243b5c" }, title: { display: true, text: "Seconds", color: "#8899aa" } }
                 }
-            } catch (e) { /* ignore poll errors */ }
-        }
+            }
+        });
+    }
 
-        setInterval(pollStatus, 2000);
-    </script>
-</body>
-</html>
+    function updateChart(steps) {
+        if (!durationChart) { initChart(steps); return; }
+        durationChart.data.datasets[0].data = steps.map(s => s.duration_seconds || 0);
+        durationChart.data.datasets[0].backgroundColor = steps.map(s => {
+            if (s.status === "succeeded") return "rgba(40,199,111,0.7)";
+            if (s.status === "running") return "rgba(78,168,255,0.7)";
+            if (s.status === "failed") return "rgba(234,84,85,0.7)";
+            return "rgba(108,117,125,0.3)";
+        });
+        durationChart.data.datasets[0].borderColor = steps.map(s => {
+            if (s.status === "succeeded") return "#28c76f";
+            if (s.status === "running") return "#4ea8ff";
+            if (s.status === "failed") return "#ea5455";
+            return "#667788";
+        });
+        durationChart.update();
+    }
+
+    // Elapsed timer
+    function updateElapsed() {
+        const now = new Date();
+        const diff = Math.floor((now - runCreatedAt) / 1000);
+        const m = Math.floor(diff / 60);
+        const s = diff % 60;
+        document.getElementById("meta-elapsed").textContent = `${m}m ${s}s`;
+    }
+
+    // Poll
+    async function poll() {
+        if (!polling) return;
+        try {
+            const [runResp, evResp] = await Promise.all([
+                fetch(`/api/runs/${runId}`),
+                fetch(`/api/runs/${runId}/events`)
+            ]);
+            if (!runResp.ok || !evResp.ok) return;
+            const run = await runResp.json();
+            const events = await evResp.json();
+
+            // Update badge
+            const badge = document.getElementById("run-badge");
+            badge.textContent = run.status;
+            badge.className = "badge badge-" + run.status;
+
+            // Progress
+            const total = run.steps.length;
+            const pct = total > 0 ? (run.current_step_index / total * 100) : 0;
+            document.getElementById("progress-fill").style.width = pct + "%";
+            document.getElementById("progress-text").textContent = `${run.current_step_index} / ${total}`;
+            document.getElementById("meta-steps").textContent = `${run.current_step_index}/${total}`;
+
+            // ETA
+            document.getElementById("meta-eta").textContent = run.eta_seconds !== null ? Math.round(run.eta_seconds) + "s" : "--";
+
+            // Buttons
+            updateButtons(run.status);
+
+            // Steps
+            const timeline = document.getElementById("step-timeline");
+            timeline.innerHTML = "";
+            run.steps.forEach((step, i) => {
+                const card = document.createElement("div");
+                card.className = "step-card" + (step.status === "running" ? " active" : "");
+                card.innerHTML = `
+                    <div class="step-icon ${step.status}">${statusIcons[step.status] || "&#8722;"}</div>
+                    <div class="step-body">
+                        <div class="step-name">${step.name} <span class="badge badge-${step.status}" style="font-size:0.7rem;padding:0.15rem 0.5rem;">${step.kind}</span></div>
+                        <div class="step-detail" onclick="this.nextElementSibling.classList.toggle('show')">
+                            ${step.duration_seconds !== null ? step.duration_seconds.toFixed(2) + "s" : "--"} &mdash; click to expand
+                        </div>
+                        <div class="step-expand">Params: ${JSON.stringify(step.params, null, 2)}${step.output ? "\nOutput: " + JSON.stringify(step.output, null, 2) : ""}${step.error ? "\nError: " + step.error : ""}</div>
+                    </div>`;
+                timeline.appendChild(card);
+            });
+
+            // Chart
+            updateChart(run.steps);
+
+            // Events
+            const log = document.getElementById("events-log");
+            log.innerHTML = "";
+            events.forEach(ev => {
+                const d = document.createElement("div");
+                d.className = "ev ev-" + ev.type;
+                d.dataset.type = ev.type;
+                const ts = new Date(ev.timestamp);
+                d.textContent = `[${ts.toTimeString().slice(0, 8)}] ${ev.type}: ${ev.message}`;
+                log.appendChild(d);
+            });
+            if (events.length === 0) {
+                log.innerHTML = '<div class="ev" style="color:#667788;">No events yet.</div>';
+            }
+            filterEvents(currentFilter, null);
+            log.scrollTop = log.scrollHeight;
+
+            // Stop polling if done
+            if (["completed", "failed", "aborted"].includes(run.status)) {
+                polling = false;
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // Init
+    updateButtons("{{ run.status.value }}");
+    initChart({{ run.steps | tojson }});
+    setInterval(poll, 2000);
+    setInterval(updateElapsed, 1000);
+    updateElapsed();
+</script>
+{% endblock %}
