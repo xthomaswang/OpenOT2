@@ -20,7 +20,7 @@ dependencies = [
 yolo = ["ultralytics>=8.0"]
 supergradients = ["super-gradients>=3.1"]
 calibration = ["pandas>=2.0", "scikit-learn>=1.2"]
-web = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "jinja2>=3.1"]
+web = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "jinja2>=3.1", "pyyaml>=6.0"]
 all = ["openot2[yolo,supergradients,calibration,web]"]
 dev = [
     "pytest>=7.0",

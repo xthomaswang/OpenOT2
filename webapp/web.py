@@ -308,6 +308,117 @@ def create_app(
         })
 
     # ------------------------------------------------------------------
+    # HTML — hardware setup
+    # ------------------------------------------------------------------
+
+    @app.get("/hardware", response_class=HTMLResponse)
+    async def hardware_page(request: Request):
+        return templates.TemplateResponse(request, "hardware.html", {
+            "has_client": client is not None,
+        })
+
+    # ------------------------------------------------------------------
+    # JSON API — hardware precheck
+    # ------------------------------------------------------------------
+
+    @app.post("/api/hardware/check-robot")
+    async def check_robot():
+        """Check robot connectivity. Uses the connected client if available."""
+        if client is not None:
+            try:
+                health = client.health(timeout=5)
+                return {
+                    "reachable": True,
+                    "name": health.get("name", ""),
+                    "api_version": health.get("api_version", ""),
+                }
+            except Exception as exc:
+                return {"reachable": False, "error": str(exc)}
+        return {"reachable": False, "error": "No robot configured. Start with --robot <IP>"}
+
+    @app.post("/api/hardware/check-robot-ip")
+    async def check_robot_ip(body: dict):
+        """Check robot connectivity by IP (for manual testing)."""
+        ip = body.get("ip", "").strip()
+        if not ip:
+            raise HTTPException(status_code=400, detail="IP address required")
+        from openot2.precheck import check_robot_connection
+        status = check_robot_connection(ip, timeout=5.0)
+        return {
+            "reachable": status.reachable,
+            "name": status.name,
+            "api_version": status.api_version,
+            "error": status.error,
+        }
+
+    @app.post("/api/hardware/scan-cameras")
+    async def scan_cameras():
+        """Scan for USB cameras."""
+        try:
+            from openot2.precheck import probe_cameras
+            cameras = probe_cameras(max_id=10)
+            return {
+                "cameras": [
+                    {
+                        "device_id": c.device_id,
+                        "width": c.width,
+                        "height": c.height,
+                        "backend": c.backend,
+                    }
+                    for c in cameras
+                ]
+            }
+        except Exception as exc:
+            return {"cameras": [], "error": str(exc)}
+
+    @app.post("/api/hardware/test-camera")
+    async def test_camera(body: dict):
+        """Capture a single test frame from a camera and return it as base64 JPEG."""
+        import base64
+        device_id = body.get("device_id", 0)
+        try:
+            from vision.camera import USBCamera
+            import cv2
+            cam = USBCamera(
+                camera_id=device_id,
+                width=body.get("width", 1920),
+                height=body.get("height", 1080),
+                warmup_frames=body.get("warmup_frames", 10),
+            )
+            with cam:
+                frame = cam.capture()
+            if frame is None:
+                return {"ok": False, "error": "Capture returned None"}
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+            return {"ok": True, "image": b64, "width": frame.shape[1], "height": frame.shape[0]}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    @app.post("/api/hardware/full-precheck")
+    async def full_precheck(body: dict):
+        """Run full precheck (robot + cameras)."""
+        ip = body.get("ip", "").strip()
+        if not ip and client is not None:
+            ip = getattr(client, '_base_url', '').replace('http://', '').split(':')[0]
+        from openot2.precheck import check_robot_connection, probe_cameras
+        robot = {"reachable": False, "error": "No IP provided"} if not ip else None
+        if ip:
+            status = check_robot_connection(ip, timeout=5.0)
+            robot = {
+                "reachable": status.reachable,
+                "name": status.name,
+                "api_version": status.api_version,
+                "error": status.error,
+            }
+        try:
+            cameras = probe_cameras(max_id=10)
+            cam_list = [{"device_id": c.device_id, "width": c.width, "height": c.height} for c in cameras]
+        except Exception as exc:
+            cam_list = []
+        return {"robot": robot, "cameras": cam_list}
+
+    # ------------------------------------------------------------------
     # JSON API — calibration
     # ------------------------------------------------------------------
 

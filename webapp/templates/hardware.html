@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}OpenOT2 - Hardware{% endblock %}
+{% block nav_hardware %}active{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .hw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+    @media (max-width: 900px) { .hw-grid { grid-template-columns: 1fr; } }
+    .hw-section { margin-bottom: 2rem; }
+    .hw-section h2 { font-size: 1.2rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .check-item {
+        display: flex; align-items: center; gap: 1rem; padding: 1rem;
+        background: #0d1b2e; border: 1px solid #243b5c; border-radius: 8px; margin-bottom: 0.75rem;
+    }
+    .check-icon { font-size: 1.5rem; width: 40px; text-align: center; flex-shrink: 0; }
+    .check-icon.ok { color: #28c76f; }
+    .check-icon.fail { color: #ea5455; }
+    .check-icon.wait { color: #ff9f43; animation: pulse 1.5s infinite; }
+    .check-icon.idle { color: #667788; }
+    .check-body { flex: 1; min-width: 0; }
+    .check-title { font-weight: 600; font-size: 0.95rem; }
+    .check-detail { font-size: 0.8rem; color: #8899aa; margin-top: 0.2rem; }
+    .cam-card {
+        background: #0d1b2e; border: 1px solid #243b5c; border-radius: 8px;
+        padding: 1rem; margin-bottom: 0.75rem;
+    }
+    .cam-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .cam-preview {
+        background: #000; border-radius: 6px; overflow: hidden; text-align: center;
+        min-height: 120px; display: flex; align-items: center; justify-content: center;
+    }
+    .cam-preview img { max-width: 100%; border-radius: 6px; }
+    .cam-preview .placeholder { color: #667788; font-size: 0.85rem; }
+    .ip-input-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .ip-input-row input { flex: 1; }
+    /* Full precheck */
+    .precheck-summary {
+        display: flex; gap: 1.5rem; margin-top: 1rem; flex-wrap: wrap;
+    }
+    .precheck-card {
+        flex: 1; min-width: 200px; text-align: center; padding: 1.25rem;
+        background: #0d1b2e; border: 1px solid #243b5c; border-radius: 10px;
+    }
+    .precheck-card .big { font-size: 2.5rem; }
+    .precheck-card .label { color: #8899aa; font-size: 0.85rem; margin-top: 0.25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem;">Hardware Setup</h1>
+
+<!-- Quick Precheck -->
+<div class="card hw-section" style="padding: 1.5rem;">
+    <h2>&#9889; Quick Precheck</h2>
+    <p style="color: #8899aa; font-size: 0.9rem; margin-bottom: 1rem;">
+        Run a full hardware check: robot connectivity + camera scan.
+    </p>
+    <div class="ip-input-row">
+        <input type="text" id="precheck-ip" placeholder="Robot IP (e.g. 169.254.8.56)" style="max-width: 280px;">
+        <button class="btn btn-primary" onclick="runFullPrecheck()">Run Precheck</button>
+    </div>
+    <div id="precheck-result"></div>
+</div>
+
+<div class="hw-grid">
+    <!-- Robot Section -->
+    <div>
+        <div class="card hw-section" style="padding: 1.5rem;">
+            <h2>&#129302; Robot Connection</h2>
+
+            {% if has_client %}
+            <div class="check-item" id="robot-check">
+                <div class="check-icon idle" id="rc-icon">&#8987;</div>
+                <div class="check-body">
+                    <div class="check-title" id="rc-title">Checking connected robot...</div>
+                    <div class="check-detail" id="rc-detail">Using server's --robot connection</div>
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="checkConnectedRobot()" style="margin-bottom: 1rem;">Check Connection</button>
+            {% else %}
+            <div class="check-item">
+                <div class="check-icon idle">&#9888;</div>
+                <div class="check-body">
+                    <div class="check-title">No robot configured</div>
+                    <div class="check-detail">Start server with <code style="color:#4ea8ff;">--robot &lt;IP&gt;</code> to auto-connect</div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div style="margin-top: 1rem;">
+                <div style="color: #8899aa; font-size: 0.85rem; margin-bottom: 0.5rem;">Test a specific IP:</div>
+                <div class="ip-input-row">
+                    <input type="text" id="robot-ip" placeholder="169.254.8.56">
+                    <button class="btn" style="background: #243b5c;" onclick="checkRobotIP()">Test</button>
+                </div>
+                <div id="ip-check-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Section -->
+    <div>
+        <div class="card hw-section" style="padding: 1.5rem;">
+            <h2>&#128247; Camera Setup</h2>
+            <p style="color: #8899aa; font-size: 0.85rem; margin-bottom: 1rem;">
+                Scan all USB cameras, preview each one, and select the overhead plate camera.
+            </p>
+            <button class="btn btn-primary" onclick="scanAndPreviewAll()" id="scan-btn">Scan & Preview All</button>
+            <div id="camera-list" style="margin-top: 1rem;"></div>
+            <div id="selected-camera" style="margin-top: 1rem; display: none;">
+                <div class="check-item" style="border-color: #28c76f40;">
+                    <div class="check-icon ok">&#10003;</div>
+                    <div class="check-body">
+                        <div class="check-title">Selected: Camera <span id="selected-cam-id">-</span></div>
+                        <div class="check-detail" id="selected-cam-detail"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Calibration Link -->
+<div class="card" style="padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+    <div>
+        <h2 style="font-size: 1.1rem; margin-bottom: 0.25rem;">&#8982; Robot Calibration</h2>
+        <p style="color: #8899aa; font-size: 0.9rem;">Tune pipette offsets and test aspirate/dispense positions.</p>
+    </div>
+    <a href="/calibration" class="btn btn-primary" style="text-decoration: none;">Open Calibration</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function checkConnectedRobot() {
+        const icon = document.getElementById("rc-icon");
+        const title = document.getElementById("rc-title");
+        const detail = document.getElementById("rc-detail");
+        icon.innerHTML = "&#8987;"; icon.className = "check-icon wait";
+        title.textContent = "Checking...";
+        const data = await apiPost("/api/hardware/check-robot", {});
+        if (!data) return;
+        if (data.reachable) {
+            icon.innerHTML = "&#10003;"; icon.className = "check-icon ok";
+            title.textContent = data.name || "Connected";
+            detail.textContent = "API " + (data.api_version || "OK");
+            showToast("Robot is healthy", "success");
+        } else {
+            icon.innerHTML = "&#10007;"; icon.className = "check-icon fail";
+            title.textContent = "Unreachable";
+            detail.textContent = data.error || "Connection failed";
+            showToast("Robot check failed", "error");
+        }
+    }
+
+    async function checkRobotIP() {
+        const ip = document.getElementById("robot-ip").value.trim();
+        if (!ip) { showToast("Enter an IP address", "warning"); return; }
+        const container = document.getElementById("ip-check-result");
+        container.innerHTML = '<div class="check-item"><div class="check-icon wait">&#8987;</div><div class="check-body"><div class="check-title">Testing ' + ip + '...</div></div></div>';
+        const data = await apiPost("/api/hardware/check-robot-ip", { ip });
+        if (!data) { container.innerHTML = ""; return; }
+        if (data.reachable) {
+            container.innerHTML = `<div class="check-item"><div class="check-icon ok">&#10003;</div><div class="check-body"><div class="check-title">${data.name || ip}</div><div class="check-detail">API ${data.api_version || "OK"}</div></div></div>`;
+            showToast(ip + " is reachable", "success");
+        } else {
+            container.innerHTML = `<div class="check-item"><div class="check-icon fail">&#10007;</div><div class="check-body"><div class="check-title">Unreachable</div><div class="check-detail">${data.error || "Connection failed"}</div></div></div>`;
+        }
+    }
+
+    let selectedCameraId = null;
+
+    async function scanAndPreviewAll() {
+        const container = document.getElementById("camera-list");
+        const btn = document.getElementById("scan-btn");
+        btn.disabled = true; btn.textContent = "Scanning...";
+        container.innerHTML = '<div style="color:#ff9f43;">Scanning USB cameras...</div>';
+
+        // Step 1: Scan
+        const scanData = await apiPost("/api/hardware/scan-cameras", {});
+        if (!scanData || scanData.cameras.length === 0) {
+            btn.disabled = false; btn.textContent = "Scan & Preview All";
+            container.innerHTML = '<div class="check-item"><div class="check-icon fail">&#10007;</div><div class="check-body"><div class="check-title">No cameras found</div><div class="check-detail">Check USB connections and try again</div></div></div>';
+            showToast("No cameras detected", "warning");
+            return;
+        }
+
+        showToast(scanData.cameras.length + " camera(s) found, capturing previews...", "info");
+
+        // Step 2: Build cards with loading state
+        let html = "";
+        scanData.cameras.forEach(cam => {
+            html += `
+                <div class="cam-card" id="cam-${cam.device_id}" style="cursor:pointer;" onclick="selectCamera(${cam.device_id}, ${cam.width}, ${cam.height})">
+                    <div class="cam-card-header">
+                        <div>
+                            <span style="font-weight:600;">Camera ${cam.device_id}</span>
+                            <span style="color:#8899aa; font-size:0.8rem; margin-left:0.5rem;">${cam.width}x${cam.height}</span>
+                        </div>
+                        <button class="btn" style="background:#243b5c; padding:0.3rem 0.75rem; font-size:0.8rem;" onclick="event.stopPropagation(); selectCamera(${cam.device_id}, ${cam.width}, ${cam.height})">Select This Camera</button>
+                    </div>
+                    <div class="cam-preview" id="preview-${cam.device_id}">
+                        <div class="placeholder" style="color:#ff9f43;">Capturing preview...</div>
+                    </div>
+                </div>`;
+        });
+        container.innerHTML = html;
+
+        // Step 3: Capture from each camera sequentially (cameras can't be opened simultaneously)
+        for (const cam of scanData.cameras) {
+            const preview = document.getElementById("preview-" + cam.device_id);
+            try {
+                const data = await apiPost("/api/hardware/test-camera", { device_id: cam.device_id });
+                if (data && data.ok) {
+                    preview.innerHTML = `<img src="data:image/jpeg;base64,${data.image}" alt="Camera ${cam.device_id}" style="width:100%;">`;
+                } else {
+                    preview.innerHTML = `<div class="placeholder" style="color:#ea5455;">${(data && data.error) || "Capture failed"}</div>`;
+                }
+            } catch (e) {
+                preview.innerHTML = `<div class="placeholder" style="color:#ea5455;">Error: ${e.message}</div>`;
+            }
+        }
+
+        btn.disabled = false; btn.textContent = "Scan & Preview All";
+        showToast("All previews captured. Click a camera to select it.", "success");
+    }
+
+    function selectCamera(deviceId, width, height) {
+        // Deselect previous
+        document.querySelectorAll(".cam-card").forEach(c => c.style.borderColor = "#243b5c");
+        // Highlight selected
+        const card = document.getElementById("cam-" + deviceId);
+        if (card) card.style.borderColor = "#28c76f";
+        selectedCameraId = deviceId;
+        // Show selection
+        document.getElementById("selected-camera").style.display = "block";
+        document.getElementById("selected-cam-id").textContent = deviceId;
+        document.getElementById("selected-cam-detail").textContent = width + "x" + height + " — Use device_id: " + deviceId + " in your config";
+        showToast("Camera " + deviceId + " selected as plate camera", "success");
+    }
+
+    async function runFullPrecheck() {
+        const ip = document.getElementById("precheck-ip").value.trim();
+        const container = document.getElementById("precheck-result");
+        container.innerHTML = '<div style="color:#ff9f43; margin-top:0.5rem;">Running precheck...</div>';
+        const data = await apiPost("/api/hardware/full-precheck", { ip });
+        if (!data) { container.innerHTML = ""; return; }
+        const r = data.robot || {};
+        const cams = data.cameras || [];
+        const robotOk = r.reachable;
+        const camsOk = cams.length > 0;
+        const allOk = robotOk && camsOk;
+        container.innerHTML = `
+            <div class="precheck-summary">
+                <div class="precheck-card" style="border-color:${allOk ? '#28c76f40' : '#ea545540'};">
+                    <div class="big">${allOk ? '&#10003;' : '&#10007;'}</div>
+                    <div class="label" style="color:${allOk ? '#28c76f' : '#ea5455'}; font-weight:600;">${allOk ? 'All Good' : 'Issues Found'}</div>
+                </div>
+                <div class="precheck-card" style="border-color:${robotOk ? '#28c76f40' : '#ea545540'};">
+                    <div class="big" style="color:${robotOk ? '#28c76f' : '#ea5455'};">${robotOk ? '&#10003;' : '&#10007;'}</div>
+                    <div class="label">Robot</div>
+                    <div style="font-size:0.8rem; color:#8899aa; margin-top:0.25rem;">${robotOk ? (r.name || 'Connected') : (r.error || 'Unreachable')}</div>
+                </div>
+                <div class="precheck-card" style="border-color:${camsOk ? '#28c76f40' : '#ea545540'};">
+                    <div class="big" style="color:${camsOk ? '#28c76f' : '#ea5455'};">${cams.length}</div>
+                    <div class="label">Camera${cams.length !== 1 ? 's' : ''}</div>
+                    <div style="font-size:0.8rem; color:#8899aa; margin-top:0.25rem;">${cams.map(c => 'ID ' + c.device_id + ' (' + c.width + 'x' + c.height + ')').join(', ') || 'None detected'}</div>
+                </div>
+            </div>`;
+        showToast(allOk ? "All hardware checks passed" : "Some checks failed", allOk ? "success" : "warning");
+    }
+
+    // Auto-check robot if connected
+    {% if has_client %}
+    checkConnectedRobot();
+    {% endif %}
+</script>
+{% endblock %}
