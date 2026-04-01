@@ -2,6 +2,8 @@
 
 A modular Python framework for controlling [Opentrons OT-2](https://opentrons.com/ot-2/) liquid handling robots with integrated machine learning, computer vision, and a web-based control interface.
 
+[Documentation](https://xthomaswang.github.io/OpenOT2/) | [GitHub](https://github.com/xthomaswang/OpenOT2) | [Try Create Task Demo](https://xthomaswang.github.io/OpenOT2/generate.html)
+
 ## Features
 
 - **HTTP API Client** — Stateful client with session management, automatic retries, and full pipette/labware lifecycle control
