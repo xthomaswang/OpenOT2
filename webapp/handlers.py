@@ -58,6 +58,9 @@ class OT2StepHandlers:
         "use_pipette": "handle_use_pipette",
         "transfer": "handle_transfer",
         "mix": "handle_mix",
+        "capture": "handle_capture",
+        "predict": "handle_predict",
+        "wait": "handle_wait",
     }
 
     def register_all(self, runner: TaskRunner) -> None:
@@ -184,3 +187,152 @@ class OT2StepHandlers:
             rinse_col=p.get("rinse_well"),
         )
         return {"mixed": p.get("mix_well"), "cycles": p.get("cycles", 3)}
+
+    # ------------------------------------------------------------------
+    # Vision / utility handlers
+    # ------------------------------------------------------------------
+
+    def handle_capture(self, step: RunStep, context=None) -> dict:
+        """Capture an image from a USB camera.
+
+        Params:
+            camera_id (int, optional): Camera device index. Default 0.
+            width (int, optional): Frame width. Default 1920.
+            height (int, optional): Frame height. Default 1080.
+            warmup_frames (int, optional): Frames to discard. Default 10.
+            save_dir (str, optional): Directory to save image. Default "captures".
+            label (str, optional): Label for the filename.
+
+        Returns:
+            {"image_path": str, "width": int, "height": int}
+        """
+        import time
+        from pathlib import Path
+
+        p = step.params
+        camera_id = p.get("camera_id", 0)
+        width = p.get("width", 1920)
+        height = p.get("height", 1080)
+        warmup = p.get("warmup_frames", 10)
+        save_dir = Path(p.get("save_dir", "captures"))
+        label = p.get("label", "capture")
+
+        try:
+            from vision.camera import USBCamera
+            import cv2
+
+            cam = USBCamera(
+                camera_id=camera_id,
+                width=width,
+                height=height,
+                warmup_frames=warmup,
+            )
+            with cam:
+                frame = cam.capture()
+
+            if frame is None:
+                return {"ok": False, "error": "Capture returned None"}
+
+            save_dir.mkdir(parents=True, exist_ok=True)
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"{label}_{ts}.jpg"
+            path = save_dir / filename
+            cv2.imwrite(str(path), frame)
+
+            logger.info("Captured image: %s (%dx%d)", path, frame.shape[1], frame.shape[0])
+            return {
+                "ok": True,
+                "image_path": str(path),
+                "width": frame.shape[1],
+                "height": frame.shape[0],
+            }
+        except Exception as exc:
+            logger.error("Capture failed: %s", exc)
+            return {"ok": False, "error": str(exc)}
+
+    def handle_predict(self, step: RunStep, context=None) -> dict:
+        """Run a vision model prediction on an image.
+
+        Params:
+            image_path (str, optional): Path to image. If omitted, captures
+                a new frame using camera params.
+            model_path (str, optional): Path to model weights.
+            model_type (str, optional): "yolo" or "supergradients". Default "yolo".
+            num_classes (int, optional): Number of classes. Default 2.
+            conf (float, optional): Confidence threshold. Default 0.5.
+            expected_class (str, optional): Class name to check for.
+            min_detections (int, optional): Minimum detections to pass. Default 1.
+            camera_id (int, optional): Camera index if capturing. Default 0.
+
+        Returns:
+            {"result": bool, "detections": int, "labels": [...], "confidences": [...]}
+
+        The ``result`` boolean is the key output — it drives conditional
+        branching in the GraphRunner (on_true / on_false).
+        """
+        p = step.params
+
+        # Get or capture image
+        image_path = p.get("image_path")
+        if not image_path:
+            cap_result = self.handle_capture(step, context)
+            if not cap_result.get("ok"):
+                return {"result": False, "error": cap_result.get("error", "capture failed")}
+            image_path = cap_result["image_path"]
+
+        model_type = p.get("model_type", "yolo")
+        model_path = p.get("model_path")
+        conf = p.get("conf", 0.5)
+        expected_class = p.get("expected_class")
+        min_detections = p.get("min_detections", 1)
+
+        if not model_path:
+            logger.warning("predict: no model_path, returning result=True (passthrough)")
+            return {"result": True, "detections": 0, "reason": "no model configured"}
+
+        try:
+            if model_type == "yolo":
+                from vision import YOLOAdapter
+                model = YOLOAdapter(model_path=model_path, num_classes=p.get("num_classes", 2))
+            else:
+                from vision import SuperGradientsAdapter
+                model = SuperGradientsAdapter(model_path=model_path, num_classes=p.get("num_classes", 2))
+
+            prediction = model.predict(image_path, conf=conf)
+
+            if expected_class:
+                filtered = prediction.filter_by_class(expected_class)
+                count = len(filtered.labels)
+            else:
+                count = len(prediction.labels)
+
+            passed = count >= min_detections
+            logger.info(
+                "predict: %d detections (need %d), result=%s",
+                count, min_detections, passed,
+            )
+            return {
+                "result": passed,
+                "detections": count,
+                "labels": prediction.labels[:10],
+                "confidences": [round(c, 3) for c in prediction.confidences[:10]],
+            }
+        except Exception as exc:
+            logger.error("Predict failed: %s", exc)
+            return {"result": False, "error": str(exc)}
+
+    def handle_wait(self, step: RunStep, context=None) -> dict:
+        """Wait for a specified number of seconds.
+
+        Params:
+            seconds (float, REQUIRED): Duration to wait.
+
+        Returns:
+            {"waited": float}
+        """
+        import time
+
+        seconds = step.params.get("seconds", 1)
+        logger.info("Waiting %.1f seconds...", seconds)
+        time.sleep(seconds)
+        return {"waited": seconds}

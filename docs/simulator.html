@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenOT2 - Protocol Simulator</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0a1628; color: #e0e6ed; display: flex; min-height: 100vh; }
+        .sidebar { width: 240px; background: #0d1b2e; border-right: 1px solid #1a2d4a; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; }
+        .sidebar-logo { padding: 1.5rem 1.25rem; border-bottom: 1px solid #1a2d4a; font-size: 1.4rem; font-weight: 700; color: #4ea8ff; letter-spacing: 0.5px; }
+        .sidebar-logo span { color: #7ec8ff; font-weight: 400; }
+        .sidebar-nav { flex: 1; padding: 1rem 0; }
+        .sidebar-nav a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1.25rem; color: #8899aa; text-decoration: none; font-size: 0.95rem; transition: all 0.2s; border-left: 3px solid transparent; }
+        .sidebar-nav a:hover { color: #e0e6ed; background: rgba(78, 168, 255, 0.08); }
+        .sidebar-nav a.active { color: #4ea8ff; background: rgba(78, 168, 255, 0.12); border-left-color: #4ea8ff; }
+        .sidebar-nav a .icon { width: 24px; text-align: center; font-size: 1.35rem; }
+        .sidebar-status { padding: 1rem 1.25rem; border-top: 1px solid #1a2d4a; font-size: 0.85rem; }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.5rem; }
+        .status-dot.demo { background: #ff9f43; box-shadow: 0 0 6px rgba(255, 159, 67, 0.5); }
+        .main-content { margin-left: 240px; flex: 1; padding: 2rem; min-height: 100vh; }
+        .card { background: #1a2d4a; border: 1px solid #243b5c; border-radius: 10px; padding: 1.25rem; }
+        .btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.2s; color: #fff; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary { background: #4ea8ff; } .btn-primary:hover:not(:disabled) { background: #3d8de0; }
+        .btn-success { background: #28c76f; } .btn-success:hover:not(:disabled) { background: #1fa85c; }
+        .btn-warning { background: #ff9f43; color: #1a1a1a; }
+        .btn-danger { background: #ea5455; } .btn-danger:hover:not(:disabled) { background: #d03e3f; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+        .badge-pending { background: rgba(108,117,125,0.15); color: #667788; }
+        .badge-running { background: rgba(78,168,255,0.2); color: #4ea8ff; }
+        .badge-succeeded { background: rgba(40,199,111,0.2); color: #28c76f; }
+        .badge-failed { background: rgba(234,84,85,0.2); color: #ea5455; }
+        .progress-bar { width: 100%; height: 10px; background: #0d1b2e; border-radius: 5px; overflow: hidden; }
+        .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #4ea8ff, #28c76f); border-radius: 5px; transition: width 0.4s ease; }
+        /* Deck */
+        .deck-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; max-width: 380px; }
+        .deck-slot { background: #0d1b2e; border: 1px solid #243b5c; border-radius: 6px; padding: 0.5rem; text-align: center; min-height: 55px; font-size: 0.75rem; transition: border-color 0.3s, box-shadow 0.3s; }
+        .deck-slot .num { color: #4ea8ff; font-weight: 700; font-size: 0.85rem; }
+        .deck-slot .lw { color: #8899aa; margin-top: 0.1rem; word-break: break-all; }
+        .deck-slot.occupied { border-color: #28c76f40; }
+        .deck-slot.trash { border-color: #ea545540; }
+        .deck-slot.active { border-color: #4ea8ff; box-shadow: 0 0 10px rgba(78,168,255,0.3); }
+        /* Steps */
+        .step-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 500px; overflow-y: auto; }
+        .step-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; background: #0d1b2e; border-radius: 6px; border-left: 3px solid #243b5c; font-size: 0.85rem; transition: all 0.3s; }
+        .step-item.active { border-left-color: #4ea8ff; background: #1a2d4a; }
+        .step-item.done { border-left-color: #28c76f; }
+        .step-item.failed { border-left-color: #ea5455; }
+        .step-item .idx { font-weight: 700; min-width: 24px; text-align: center; }
+        .step-item .kind { background: #243b5c; color: #8899aa; padding: 0.1rem 0.4rem; border-radius: 10px; font-size: 0.7rem; }
+        .step-item .info { margin-left: auto; color: #667788; font-family: monospace; font-size: 0.75rem; }
+        /* Log */
+        .log-panel { background: #0d1b2e; border: 1px solid #243b5c; border-radius: 8px; padding: 0.75rem; font-family: monospace; font-size: 0.78rem; max-height: 250px; overflow-y: auto; line-height: 1.7; }
+        .log-panel .entry { padding: 0.1rem 0; }
+        .log-panel .entry.info { color: #4ea8ff; }
+        .log-panel .entry.success { color: #28c76f; }
+        .log-panel .entry.warn { color: #ff9f43; }
+        .log-panel .entry.branch { color: #c084fc; }
+        /* Toast */
+        .toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.5rem; }
+        .toast { padding: 0.75rem 1.25rem; border-radius: 8px; font-size: 0.9rem; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards; }
+        .toast-success { background: #28c76f; } .toast-info { background: #4ea8ff; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+        /* Layout */
+        .sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        @media (max-width: 900px) { .sim-grid { grid-template-columns: 1fr; } .sidebar { width: 60px; } .sidebar-logo span, .sidebar-nav a span, .sidebar-status span { display: none; } .main-content { margin-left: 60px; padding: 1rem; } }
+        .controls { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; }
+        .speed-label { color: #8899aa; font-size: 0.85rem; }
+        select { background: #0d1b2e; border: 1px solid #243b5c; border-radius: 6px; color: #e0e6ed; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-logo">Open<span>OT2</span></div>
+        <nav class="sidebar-nav">
+            <a href="index.html"><span class="icon">&#9632;</span><span>Dashboard</span></a>
+            <a href="generate.html"><span class="icon">&#9998;</span><span>Create Task</span></a>
+            <a href="simulator.html" class="active"><span class="icon">&#9654;</span><span>Simulator</span></a>
+            <a href="index.html"><span class="icon">&#9776;</span><span>Saved Tasks</span></a>
+            <a href="index.html"><span class="icon">&#9881;</span><span>Hardware</span></a>
+        </nav>
+        <div class="sidebar-status">
+            <span class="status-dot demo"></span>
+            <span>Demo Mode</span>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <h1 style="font-size: 1.4rem; margin-bottom: 0.5rem;">Protocol Simulator</h1>
+        <p style="color: #8899aa; font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Watch a complete Color Mixing protocol execute step-by-step. No robot needed — this simulates the full DAG execution with conditional branching.
+        </p>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn btn-success" id="btn-start" onclick="startSim()">&#9654; Run Simulation</button>
+            <button class="btn btn-warning" id="btn-pause" onclick="pauseSim()" disabled>&#9646;&#9646; Pause</button>
+            <button class="btn btn-danger" id="btn-reset" onclick="resetSim()">&#8634; Reset</button>
+            <span class="speed-label">Speed:</span>
+            <select id="speed" onchange="updateSpeed()">
+                <option value="1000">Slow (1s)</option>
+                <option value="500" selected>Normal (0.5s)</option>
+                <option value="200">Fast (0.2s)</option>
+                <option value="50">Instant</option>
+            </select>
+            <span style="margin-left: auto;">
+                <span class="badge" id="status-badge" style="font-size: 0.8rem; padding: 0.3rem 0.9rem;">READY</span>
+            </span>
+        </div>
+
+        <!-- Progress -->
+        <div class="card" style="padding: 0.75rem 1rem; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem;">
+                <span style="font-size: 0.85rem; color: #8899aa;">Progress</span>
+                <span style="font-size: 0.85rem; font-weight: 600;" id="progress-text">0 / 0</span>
+            </div>
+            <div class="progress-bar"><div class="fill" id="progress-fill" style="width: 0%;"></div></div>
+        </div>
+
+        <div class="sim-grid">
+            <!-- Left: Deck -->
+            <div>
+                <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">Deck Layout</h2>
+                <div class="deck-grid" id="deck-grid"></div>
+
+                <h2 style="font-size: 1rem; margin: 1.25rem 0 0.75rem;">Protocol Graph</h2>
+                <div class="card" style="padding: 0.75rem; font-family: monospace; font-size: 0.75rem; line-height: 1.8; color: #8899aa;">
+                    <div>pickup <span style="color:#667788;">→</span> aspirate_red <span style="color:#667788;">→</span> dispense_red <span style="color:#667788;">→</span> rinse1</div>
+                    <div>rinse1 <span style="color:#667788;">→</span> aspirate_green <span style="color:#667788;">→</span> dispense_green <span style="color:#667788;">→</span> rinse2</div>
+                    <div>rinse2 <span style="color:#667788;">→</span> aspirate_blue <span style="color:#667788;">→</span> dispense_blue <span style="color:#667788;">→</span> drop_mix</div>
+                    <div>drop_mix <span style="color:#667788;">→</span> mix <span style="color:#667788;">→</span> home_capture <span style="color:#667788;">→</span> wait</div>
+                    <div>wait <span style="color:#667788;">→</span> capture <span style="color:#667788;">→</span> predict</div>
+                    <div>predict ─┬─ <span style="color:#28c76f;">true</span> <span style="color:#667788;">→</span> done</div>
+                    <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <span style="color:#ea5455;">false</span> <span style="color:#667788;">→</span> retry_mix <span style="color:#667788;">→</span> home_capture</div>
+                </div>
+            </div>
+
+            <!-- Right: Steps -->
+            <div>
+                <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">Execution Steps</h2>
+                <div class="step-list" id="step-list"></div>
+            </div>
+        </div>
+
+        <!-- Log -->
+        <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">Execution Log</h2>
+        <div class="log-panel" id="log-panel"></div>
+    </main>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+    function showToast(msg, type="info") {
+        const c = document.getElementById("toast-container");
+        const t = document.createElement("div");
+        t.className = "toast toast-" + type;
+        t.textContent = msg;
+        c.appendChild(t);
+        setTimeout(() => t.remove(), 3000);
+    }
+
+    // ---- Protocol definition (Color Mixing with QC branch) ----
+    const DECK = {
+        "1": "corning_96_wellplate",
+        "4": "nest_12_reservoir (clean)",
+        "7": "nest_12_reservoir (Red)",
+        "8": "nest_12_reservoir (Green)",
+        "9": "nest_12_reservoir (Blue)",
+        "10": "opentrons_tiprack_200ul",
+    };
+
+    const GRAPH_NODES = [
+        { id: "pickup",         kind: "pick_up_tip", name: "Pick up tip",          slots: ["10"], info: "slot 10 A1" },
+        { id: "aspirate_red",   kind: "aspirate",    name: "Aspirate Red",          slots: ["7"],  info: "80uL slot 7" },
+        { id: "dispense_red",   kind: "dispense",    name: "Dispense Red → A1",     slots: ["1"],  info: "80uL slot 1" },
+        { id: "rinse1",         kind: "transfer",    name: "Rinse tip",             slots: ["4"],  info: "rinse slot 4" },
+        { id: "aspirate_green", kind: "aspirate",    name: "Aspirate Green",        slots: ["8"],  info: "120uL slot 8" },
+        { id: "dispense_green", kind: "dispense",    name: "Dispense Green → A1",   slots: ["1"],  info: "120uL slot 1" },
+        { id: "rinse2",         kind: "transfer",    name: "Rinse tip",             slots: ["4"],  info: "rinse slot 4" },
+        { id: "aspirate_blue",  kind: "aspirate",    name: "Aspirate Blue",         slots: ["9"],  info: "50uL slot 9" },
+        { id: "dispense_blue",  kind: "dispense",    name: "Dispense Blue → A1",    slots: ["1"],  info: "50uL slot 1" },
+        { id: "drop_mix",       kind: "drop_tip",    name: "Drop tip → mix prep",   slots: [],     info: "trash" },
+        { id: "mix",            kind: "mix",         name: "Mix well A1",           slots: ["1","10"], info: "3 cycles 150uL" },
+        { id: "home_capture",   kind: "home",        name: "Home for capture",      slots: [],     info: "" },
+        { id: "wait",           kind: "wait",        name: "Wait for settling",     slots: [],     info: "5 seconds" },
+        { id: "capture",        kind: "capture",     name: "Capture image",         slots: [],     info: "camera 0" },
+        { id: "predict",        kind: "predict",     name: "QC: Check color",       slots: [],     info: "model check", branch: true },
+        // Branch: on_true → done, on_false → retry_mix
+        { id: "retry_mix",      kind: "mix",         name: "Retry mix (QC fail)",   slots: ["1","10"], info: "5 cycles 200uL", isFallback: true },
+        { id: "done",           kind: "home",        name: "Done — Home",           slots: [],     info: "complete" },
+    ];
+
+    // Execution order with branching simulation
+    // First run: predict fails → retry → predict passes
+    const EXEC_ORDER_FIRST_FAIL = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,11,12,13,14,16];
+    const EXEC_ORDER_PASS =       [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,16];
+
+    let execOrder = EXEC_ORDER_FIRST_FAIL; // default: first predict fails
+    let currentStep = -1;
+    let running = false;
+    let paused = false;
+    let speed = 500;
+    let completedCount = 0;
+
+    // ---- Render ----
+    const SLOT_ORDER = [10,11,12,7,8,9,4,5,6,1,2,3];
+
+    function renderDeck(activeSlots = []) {
+        const el = document.getElementById("deck-grid");
+        let h = "";
+        SLOT_ORDER.forEach(s => {
+            const k = String(s);
+            const lw = DECK[k] || "";
+            const isTrash = s === 12;
+            const isActive = activeSlots.includes(k);
+            let cls = "deck-slot";
+            if (isTrash) cls += " trash";
+            else if (lw) cls += " occupied";
+            if (isActive) cls += " active";
+            h += `<div class="${cls}" id="slot-${s}"><div class="num">${s}</div><div class="lw">${isTrash ? "Trash" : lw || "empty"}</div></div>`;
+        });
+        el.innerHTML = h;
+    }
+
+    function renderSteps() {
+        const el = document.getElementById("step-list");
+        let h = "";
+        GRAPH_NODES.forEach((n, i) => {
+            let cls = "step-item";
+            let idxColor = "#667788";
+            let icon = "&#9675;";
+            if (i < completedCount || (n._done)) {
+                cls += " done"; idxColor = "#28c76f"; icon = "&#10003;";
+            }
+            if (n._failed) {
+                cls += " failed"; idxColor = "#ea5455"; icon = "&#10007;";
+            }
+            if (n._active) {
+                cls += " active"; idxColor = "#4ea8ff"; icon = "&#9881;";
+            }
+            h += `<div class="${cls}" id="step-${n.id}">
+                <span class="idx" style="color:${idxColor};">${icon}</span>
+                <span>${n.name}</span>
+                <span class="kind">${n.kind}</span>
+                <span class="info">${n.info}</span>
+            </div>`;
+        });
+        el.innerHTML = h;
+    }
+
+    function log(msg, cls = "") {
+        const el = document.getElementById("log-panel");
+        const ts = new Date().toLocaleTimeString();
+        el.innerHTML += `<div class="entry ${cls}">[${ts}] ${msg}</div>`;
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function updateProgress() {
+        const total = execOrder.length;
+        const pct = total > 0 ? (completedCount / total * 100) : 0;
+        document.getElementById("progress-fill").style.width = pct + "%";
+        document.getElementById("progress-text").textContent = `${completedCount} / ${total}`;
+    }
+
+    function setBadge(text, color) {
+        const b = document.getElementById("status-badge");
+        b.textContent = text;
+        b.style.background = color === "green" ? "rgba(40,199,111,0.2)" : color === "blue" ? "rgba(78,168,255,0.2)" : color === "red" ? "rgba(234,84,85,0.2)" : color === "orange" ? "rgba(255,159,67,0.2)" : "rgba(108,117,125,0.2)";
+        b.style.color = color === "green" ? "#28c76f" : color === "blue" ? "#4ea8ff" : color === "red" ? "#ea5455" : color === "orange" ? "#ff9f43" : "#8899aa";
+    }
+
+    // ---- Simulation ----
+    function updateSpeed() { speed = parseInt(document.getElementById("speed").value); }
+
+    async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    async function startSim() {
+        if (running && paused) { paused = false; document.getElementById("btn-pause").disabled = false; setBadge("RUNNING", "blue"); log("Resumed", "info"); return; }
+        if (running) return;
+        running = true; paused = false;
+        document.getElementById("btn-start").disabled = true;
+        document.getElementById("btn-pause").disabled = false;
+        setBadge("RUNNING", "blue");
+        log("Simulation started — Color Mixing protocol with QC branch", "info");
+        showToast("Simulation started", "info");
+
+        for (let ei = 0; ei < execOrder.length; ei++) {
+            while (paused) { await sleep(100); }
+            if (!running) break;
+
+            const nodeIdx = execOrder[ei];
+            const node = GRAPH_NODES[nodeIdx];
+
+            // Clear active states
+            GRAPH_NODES.forEach(n => n._active = false);
+            node._active = true;
+            renderSteps();
+            renderDeck(node.slots || []);
+
+            log(`Executing: ${node.name} (${node.kind})`, "info");
+
+            // Simulate predict branching
+            if (node.kind === "predict") {
+                await sleep(speed);
+                if (node._visitCount === undefined) node._visitCount = 0;
+                node._visitCount++;
+                if (node._visitCount === 1 && execOrder === EXEC_ORDER_FIRST_FAIL) {
+                    // First predict fails
+                    log(`QC predict: result = FALSE → retry branch`, "branch");
+                    node._done = true; node._active = false;
+                    completedCount++;
+                    updateProgress();
+                    renderSteps();
+                    await sleep(speed / 2);
+                    continue;
+                } else {
+                    log(`QC predict: result = TRUE → done branch`, "success");
+                    node._done = true; node._active = false;
+                    completedCount++;
+                    updateProgress();
+                    renderSteps();
+                    await sleep(speed / 2);
+                    continue;
+                }
+            }
+
+            if (node.isFallback) {
+                log(`Retry: ${node.name} (QC failed, re-mixing)`, "warn");
+            }
+
+            await sleep(speed);
+
+            node._done = true;
+            node._active = false;
+            completedCount++;
+            updateProgress();
+            renderSteps();
+            renderDeck([]);
+
+            if (node.kind === "wait") {
+                log(`Waited 5 seconds (simulated)`, "info");
+            } else if (node.kind === "capture") {
+                log(`Image captured: qc_col1_20260331.jpg`, "success");
+            }
+        }
+
+        // Done
+        GRAPH_NODES.forEach(n => n._active = false);
+        renderSteps();
+        renderDeck([]);
+        running = false;
+        document.getElementById("btn-start").disabled = false;
+        document.getElementById("btn-pause").disabled = true;
+        setBadge("COMPLETED", "green");
+        log("Simulation completed — all steps executed successfully", "success");
+        showToast("Simulation complete!", "success");
+    }
+
+    function pauseSim() {
+        if (!running) return;
+        paused = true;
+        document.getElementById("btn-pause").disabled = true;
+        document.getElementById("btn-start").disabled = false;
+        document.getElementById("btn-start").textContent = "▶ Resume";
+        setBadge("PAUSED", "orange");
+        log("Paused", "warn");
+    }
+
+    function resetSim() {
+        running = false; paused = false;
+        currentStep = -1; completedCount = 0;
+        GRAPH_NODES.forEach(n => { n._done = false; n._active = false; n._failed = false; n._visitCount = undefined; });
+        renderDeck([]);
+        renderSteps();
+        updateProgress();
+        document.getElementById("log-panel").innerHTML = "";
+        document.getElementById("btn-start").disabled = false;
+        document.getElementById("btn-start").textContent = "▶ Run Simulation";
+        document.getElementById("btn-pause").disabled = true;
+        setBadge("READY", "");
+        showToast("Reset", "info");
+    }
+
+    // Init
+    renderDeck([]);
+    renderSteps();
+    updateProgress();
+    </script>
+</body>
+</html>

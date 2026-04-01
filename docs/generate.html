@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenOT2 - Generate Task</title>
+    <title>OpenOT2 - Create Your Task</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -57,9 +57,9 @@
             border-left-color: #4ea8ff;
         }
         .sidebar-nav a .icon {
-            width: 20px;
+            width: 24px;
             text-align: center;
-            font-size: 1.1rem;
+            font-size: 1.35rem;
         }
         .sidebar-status {
             padding: 1rem 1.25rem;
@@ -76,6 +76,16 @@
         .status-dot.connected { background: #28c76f; box-shadow: 0 0 6px rgba(40, 199, 111, 0.5); }
         .status-dot.disconnected { background: #ea5455; }
         .status-dot.demo { background: #ff9f43; box-shadow: 0 0 6px rgba(255, 159, 67, 0.5); }
+        .robot-status-detail {
+            display: none;
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: #1a2d4a;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #8899aa;
+        }
+        .robot-status-detail.show { display: block; }
         /* Main content */
         .main-content {
             margin-left: 240px;
@@ -100,6 +110,15 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
+        .badge-draft { background: rgba(108, 117, 125, 0.2); color: #8899aa; }
+        .badge-ready { background: rgba(108, 117, 125, 0.2); color: #8899aa; }
+        .badge-running { background: rgba(78, 168, 255, 0.2); color: #4ea8ff; }
+        .badge-paused, .badge-pause_requested { background: rgba(255, 159, 67, 0.2); color: #ff9f43; }
+        .badge-completed, .badge-succeeded { background: rgba(40, 199, 111, 0.2); color: #28c76f; }
+        .badge-failed { background: rgba(234, 84, 85, 0.2); color: #ea5455; }
+        .badge-aborted { background: rgba(234, 84, 85, 0.2); color: #ea5455; }
+        .badge-pending { background: rgba(108, 117, 125, 0.15); color: #667788; }
+        .badge-skipped { background: rgba(108, 117, 125, 0.15); color: #667788; }
         /* Buttons */
         .btn {
             display: inline-flex;
@@ -120,7 +139,23 @@
         .btn-success { background: #28c76f; }
         .btn-success:hover:not(:disabled) { background: #1fa85c; }
         .btn-warning { background: #ff9f43; color: #1a1a1a; }
+        .btn-warning:hover:not(:disabled) { background: #e08a30; }
         .btn-danger { background: #ea5455; }
+        .btn-danger:hover:not(:disabled) { background: #d03e3f; }
+        /* Progress bar */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #0d1b2e;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ea8ff, #28c76f);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
         /* Toast notifications */
         .toast-container {
             position: fixed;
@@ -146,7 +181,44 @@
         .toast-info { background: #4ea8ff; }
         @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
-        /* Form elements */
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: #1a2d4a;
+            border: 1px solid #243b5c;
+            border-radius: 12px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal h2 { margin-bottom: 1.5rem; color: #e0e6ed; }
+        .modal label { display: block; margin: 0.75rem 0 0.25rem; color: #8899aa; font-size: 0.85rem; }
+        .modal input, .modal select, .modal textarea {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: #0d1b2e;
+            border: 1px solid #243b5c;
+            border-radius: 6px;
+            color: #e0e6ed;
+            font-size: 0.9rem;
+        }
+        .modal input:focus, .modal select:focus, .modal textarea:focus {
+            outline: none;
+            border-color: #4ea8ff;
+        }
+        .modal textarea { font-family: monospace; min-height: 60px; resize: vertical; }
+        /* Form elements for dark theme */
         input, select, textarea {
             background: #0d1b2e;
             border: 1px solid #243b5c;
@@ -168,27 +240,45 @@
             .main-content { margin-left: 60px; padding: 1rem; }
         }
 
-        /* Page-specific styles */
-        .gen-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
-        @media (max-width: 1000px) { .gen-layout { grid-template-columns: 1fr; } }
-        .task-input { min-height: 200px; width: 100%; resize: vertical; font-size: 0.9rem; line-height: 1.6; }
-        .prompt-output {
-            width: 100%; min-height: 500px; resize: vertical;
-            font-family: monospace; font-size: 0.8rem; line-height: 1.5;
-            background: #0a1020; color: #c8d0da; border: 1px solid #243b5c;
-            border-radius: 8px; padding: 1rem; white-space: pre-wrap; word-break: break-word;
+        /* === generate.html extra_styles === */
+        .wiz-progress { display: flex; gap: 0; margin-bottom: 2rem; }
+        .wiz-ind {
+            flex: 1; text-align: center; padding: 0.6rem 0.25rem; font-size: 0.78rem;
+            color: #667788; cursor: pointer; transition: color 0.3s;
         }
-        .example-chip {
-            display: inline-block; padding: 0.35rem 0.75rem; margin: 0.25rem;
-            background: #243b5c; border: 1px solid #2d4a6f; border-radius: 20px;
-            color: #8899aa; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;
+        .wiz-ind::before {
+            content: ''; display: block; width: 34px; height: 34px; margin: 0 auto 0.35rem;
+            border-radius: 50%; border: 2px solid #243b5c; line-height: 30px; text-align: center;
+            font-weight: 700; font-size: 0.85rem; background: #0d1b2e; color: #667788; transition: all 0.3s;
         }
-        .example-chip:hover { background: #4ea8ff; color: #fff; border-color: #4ea8ff; }
-        .copy-btn { position: relative; }
-        .copy-btn.copied::after {
-            content: 'Copied!'; position: absolute; top: -30px; left: 50%; transform: translateX(-50%);
-            background: #28c76f; color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem;
-        }
+        .wiz-ind:nth-child(1)::before{content:'1'}.wiz-ind:nth-child(2)::before{content:'2'}
+        .wiz-ind:nth-child(3)::before{content:'3'}.wiz-ind:nth-child(4)::before{content:'4'}
+        .wiz-ind:nth-child(5)::before{content:'5'}
+        .wiz-ind.active { color: #4ea8ff; }
+        .wiz-ind.active::before { border-color: #4ea8ff; color: #4ea8ff; }
+        .wiz-ind.done { color: #28c76f; }
+        .wiz-ind.done::before { border-color: #28c76f; background: #28c76f; color: #fff; content: '\2713'; }
+        .wiz-panel { display: none; } .wiz-panel.active { display: block; }
+        .wiz-nav { display: flex; justify-content: space-between; margin-top: 2rem; }
+        /* Shared */
+        .task-input { min-height: 160px; width: 100%; resize: vertical; font-size: 0.9rem; line-height: 1.6; }
+        .prompt-box { width:100%; min-height:250px; resize:vertical; font-family:monospace; font-size:0.78rem; line-height:1.5; background:#0a1020; color:#c8d0da; border:1px solid #243b5c; border-radius:8px; padding:1rem; }
+        .paste-section { margin-bottom: 1.25rem; }
+        .paste-section label { display:block; font-weight:600; margin-bottom:0.3rem; font-size:0.9rem; }
+        .paste-section .hint { color:#667788; font-size:0.78rem; margin-bottom:0.4rem; }
+        .paste-box { width:100%; min-height:130px; resize:vertical; font-family:monospace; font-size:0.8rem; line-height:1.5; }
+        .val-item { display:flex; align-items:flex-start; gap:0.75rem; padding:0.75rem; border-radius:8px; margin-bottom:0.5rem; }
+        .val-item.pass { background:rgba(40,199,111,0.1); border:1px solid #28c76f40; }
+        .val-item.fail { background:rgba(234,84,85,0.1); border:1px solid #ea545540; }
+        .val-item.warn { background:rgba(255,159,67,0.1); border:1px solid #ff9f4340; }
+        .chip { display:inline-block; padding:0.3rem 0.7rem; margin:0.2rem; background:#243b5c; border:1px solid #2d4a6f; border-radius:20px; color:#8899aa; font-size:0.78rem; cursor:pointer; transition:all 0.2s; }
+        .chip:hover { background:#4ea8ff; color:#fff; border-color:#4ea8ff; }
+        .conn-box { display:flex; align-items:center; gap:1rem; padding:1.25rem; background:#0d1b2e; border-radius:8px; margin-bottom:0.75rem; }
+        .conn-icon { font-size:1.8rem; } .conn-icon.ok{color:#28c76f;} .conn-icon.fail{color:#ea5455;} .conn-icon.wait{color:#ff9f43;}
+        .deck-mini { display:grid; grid-template-columns:repeat(3,1fr); gap:0.5rem; max-width:360px; }
+        .deck-mini .slot { background:#0d1b2e; border:1px solid #243b5c; border-radius:6px; padding:0.5rem; text-align:center; min-height:48px; font-size:0.75rem; }
+        .deck-mini .slot .num { color:#4ea8ff; font-weight:700; } .deck-mini .slot .lw { color:#8899aa; margin-top:0.1rem; word-break:break-all; }
+        .deck-mini .slot.occupied { border-color:#28c76f40; } .deck-mini .slot.trash { border-color:#ea545540; }
     </style>
 </head>
 <body>
@@ -199,21 +289,17 @@
                 <span class="icon">&#9632;</span>
                 <span>Dashboard</span>
             </a>
-            <a href="index.html">
-                <span class="icon">&#9881;</span>
-                <span>Setup</span>
-            </a>
             <a href="generate.html" class="active">
                 <span class="icon">&#9998;</span>
-                <span>Generate</span>
+                <span>Create Task</span>
             </a>
             <a href="index.html">
-                <span class="icon">&#9874;</span>
+                <span class="icon">&#9776;</span>
+                <span>Saved Tasks</span>
+            </a>
+            <a href="index.html">
+                <span class="icon">&#9881;</span>
                 <span>Hardware</span>
-            </a>
-            <a href="index.html">
-                <span class="icon">&#8982;</span>
-                <span>Calibration</span>
             </a>
         </nav>
         <div class="sidebar-status">
@@ -223,365 +309,842 @@
     </aside>
 
     <main class="main-content">
-        <h1 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Create Your Task</h1>
-        <p style="color: #8899aa; font-size: 0.9rem; margin-bottom: 1.5rem;">
-            Describe your experiment below, generate a prompt with full API reference, then paste into any LLM (Claude Opus 4.6, GPT-5.4 Pro, Gemini 3.1 Pro). Paste back the output to validate and run.
-        </p>
+<h1 style="font-size:1.4rem; margin-bottom:1.5rem;">Create Your Task</h1>
 
-        <div class="gen-layout">
-            <!-- Left: Input -->
-            <div>
-                <div class="card" style="padding: 1.5rem;">
-                    <h2 style="font-size: 1.1rem; margin-bottom: 1rem;">1. Describe Your Task</h2>
+<div class="wiz-progress">
+    <div class="wiz-ind active" onclick="goStep(0)">Connection</div>
+    <div class="wiz-ind" onclick="goStep(1)">Create Task</div>
+    <div class="wiz-ind" onclick="goStep(2)">Verify</div>
+    <div class="wiz-ind" onclick="goStep(3)">Calibration</div>
+    <div class="wiz-ind" onclick="goStep(4)">Create Run</div>
+</div>
 
-                    <div style="margin-bottom: 1rem;">
-                        <div style="color: #8899aa; font-size: 0.85rem; margin-bottom: 0.5rem;">Quick examples:</div>
-                        <span class="example-chip" onclick="loadExample('color_mixing')">Color Mixing</span>
-                        <span class="example-chip" onclick="loadExample('serial_dilution')">Serial Dilution</span>
-                        <span class="example-chip" onclick="loadExample('cell_seeding')">Cell Seeding</span>
-                        <span class="example-chip" onclick="loadExample('reagent_distribution')">Reagent Distribution</span>
-                        <span class="example-chip" onclick="loadExample('sample_consolidation')">Sample Consolidation</span>
-                    </div>
-
-                    <textarea class="task-input" id="task-description" placeholder="Describe your experiment in detail. Include:
-
-- What liquids/reagents you're working with
-- Source and destination labware
-- Volumes and number of transfers
-- Any special requirements (mixing, rinsing, multi-channel)
-- What parameters you want to control from the web UI
-
-Example:
-I want to mix RGB food coloring to create target colors. I have 3 source reservoirs (Red, Green, Blue) in slots 7-9 and a 96-well plate in slot 1. I need to transfer varying volumes (0-200uL) of each color to wells, then mix. I want a web page where I can input target colors as RGB values and the system calculates the volumes automatically."></textarea>
-
-                    <div style="margin-top: 1rem;">
-                        <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem;">Deck Layout (optional)</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                            <div>
-                                <label style="color: #8899aa; font-size: 0.8rem;">Pipette</label>
-                                <select id="opt-pipette" style="width: 100%;">
-                                    <option value="">Auto-detect</option>
-                                    <option value="p300_single_gen2">P300 Single</option>
-                                    <option value="p300_multi_gen2">P300 Multi</option>
-                                    <option value="p20_single_gen2">P20 Single</option>
-                                    <option value="p1000_single_gen2">P1000 Single</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="color: #8899aa; font-size: 0.8rem;">Mount</label>
-                                <select id="opt-mount" style="width: 100%;">
-                                    <option value="">Auto</option>
-                                    <option value="left">Left</option>
-                                    <option value="right">Right</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <button class="btn btn-success" style="margin-top: 1.5rem; width: 100%; justify-content: center; font-size: 1rem; padding: 0.75rem;" onclick="generatePrompt()">
-                        Generate Prompt
-                    </button>
-                </div>
-            </div>
-
-            <!-- Right: Output -->
-            <div>
-                <div class="card" style="padding: 1.5rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <h2 style="font-size: 1.1rem;">2. Copy & Paste to LLM</h2>
-                        <button class="btn btn-primary copy-btn" id="copy-btn" onclick="copyPrompt()">Copy to Clipboard</button>
-                    </div>
-                    <textarea class="prompt-output" id="prompt-output" readonly>Fill in your task description on the left and click "Generate Prompt" to create a complete LLM prompt.</textarea>
-                </div>
-            </div>
+<!-- ===== Step 1: Connection ===== -->
+<div class="wiz-panel active" id="panel-0">
+<div class="card" style="padding:1.5rem;">
+    <h2 style="margin-bottom:0.75rem;">Robot Connection</h2>
+    <p style="color:#8899aa; font-size:0.85rem; margin-bottom:1rem;">Verify your OT-2 is online before proceeding.</p>
+    <div class="conn-box" id="conn-box">
+        <div class="conn-icon wait" id="conn-icon">&#8987;</div>
+        <div>
+            <div style="font-weight:600;" id="conn-title">Checking...</div>
+            <div style="font-size:0.8rem; color:#8899aa;" id="conn-detail"></div>
         </div>
+    </div>
+    <button class="btn btn-primary" onclick="checkConn()" style="margin-bottom:1rem;">Refresh</button>
+    <div style="border-top:1px solid #243b5c; padding-top:1rem; margin-top:0.5rem;">
+        <div style="color:#667788; font-size:0.8rem; margin-bottom:0.4rem;">Test a specific IP:</div>
+        <div style="display:flex; gap:0.5rem;">
+            <input type="text" id="test-ip" placeholder="169.254.8.56" style="flex:1;">
+            <button class="btn" style="background:#243b5c;" onclick="checkIP()">Test</button>
+        </div>
+        <div id="ip-result" style="margin-top:0.5rem;"></div>
+    </div>
+</div>
+</div>
+
+<!-- ===== Step 2: Create Task (prompt generation + paste) ===== -->
+<div class="wiz-panel" id="panel-1">
+<!-- 2a: Describe -->
+<div class="card" style="padding:1.5rem; margin-bottom:1.25rem;">
+    <h2 style="margin-bottom:0.5rem;">Describe Your Experiment</h2>
+    <p style="color:#8899aa; font-size:0.83rem; margin-bottom:0.75rem;">
+        Write a detailed description, then generate a prompt to paste into any LLM
+        (<strong style="color:#e0e6ed;">Claude Opus 4.6</strong>, <strong style="color:#e0e6ed;">GPT-5.4 Pro</strong>, <strong style="color:#e0e6ed;">Gemini 3.1 Pro</strong> recommended).
+        The LLM has web access and can reference the
+        <a href="https://github.com/xthomaswang/OpenOT2" target="_blank" style="color:#4ea8ff;">OpenOT2 docs</a> for the latest API.
+    </p>
+    <div style="margin-bottom:0.75rem;">
+        <span class="chip" onclick="loadEx('color_mixing')">Color Mixing</span>
+        <span class="chip" onclick="loadEx('serial_dilution')">Serial Dilution</span>
+        <span class="chip" onclick="loadEx('cell_seeding')">Cell Seeding</span>
+        <span class="chip" onclick="loadEx('reagent_dist')">Reagent Distribution</span>
+    </div>
+    <textarea class="task-input" id="task-desc" placeholder="Describe reagents, labware, volumes, workflow..."></textarea>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.75rem;">
+        <div><label style="color:#8899aa;font-size:0.78rem;">Pipette</label><select id="opt-pip" style="width:100%;"><option value="">Auto</option><option value="p300_single_gen2">P300 Single</option><option value="p300_multi_gen2">P300 Multi</option><option value="p20_single_gen2">P20 Single</option><option value="p1000_single_gen2">P1000 Single</option></select></div>
+        <div><label style="color:#8899aa;font-size:0.78rem;">Mount</label><select id="opt-mnt" style="width:100%;"><option value="">Auto</option><option value="left">Left</option><option value="right">Right</option></select></div>
+    </div>
+    <button class="btn btn-success" style="margin-top:1rem; width:100%; justify-content:center;" onclick="genPrompt()">Generate Prompt</button>
+</div>
+<!-- 2b: Prompt output -->
+<div id="prompt-sec" style="display:none;">
+<div class="card" style="padding:1.5rem; margin-bottom:1.25rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+        <h3 style="font-size:1rem;">Copy This Prompt to Your LLM</h3>
+        <button class="btn btn-primary" onclick="copyPrompt()">Copy</button>
+    </div>
+    <textarea class="prompt-box" id="prompt-out" readonly></textarea>
+</div>
+</div>
+<!-- 2c: Paste LLM output -->
+<div class="card" style="padding:1.5rem;">
+    <h3 style="font-size:1rem; margin-bottom:0.75rem;">Paste LLM Output</h3>
+    <div class="paste-section">
+        <label>Deck Configuration <span style="color:#ea5455;">*</span></label>
+        <div class="hint">YAML — pipettes, labware, slot assignments</div>
+        <textarea class="paste-box" id="paste-deck" placeholder="pipettes:&#10;  left: p300_single_gen2&#10;labware:&#10;  &quot;1&quot;: corning_96_wellplate_360ul_flat"></textarea>
+    </div>
+    <div class="paste-section">
+        <label>Task Steps <span style="color:#ea5455;">*</span></label>
+        <div class="hint">JSON array — each step: {"name", "kind", "params"}</div>
+        <textarea class="paste-box" id="paste-steps" placeholder='[{"name":"Pick tip","kind":"pick_up_tip","params":{"slot":"10","well":"A1"}}]'></textarea>
+    </div>
+    <div class="paste-section">
+        <label>Custom Template <span style="color:#667788;font-weight:400;">(optional)</span></label>
+        <div class="hint">HTML extending base.html for a custom UI</div>
+        <textarea class="paste-box" id="paste-tpl" style="min-height:80px;" placeholder="Leave empty for default run page."></textarea>
+    </div>
+    <div class="paste-section">
+        <label>Task Name</label>
+        <input type="text" id="run-name" placeholder="My Experiment" style="width:100%;">
+    </div>
+</div>
+</div>
+
+<!-- ===== Step 3: Verify & Save ===== -->
+<div class="wiz-panel" id="panel-2">
+<div class="card" style="padding:1.5rem;">
+    <h2 style="margin-bottom:0.5rem;">Verify &amp; Save</h2>
+    <p style="color:#8899aa; font-size:0.83rem; margin-bottom:1rem;">Validate your configuration, preview the deck and steps, then save the task.</p>
+    <button class="btn btn-primary" onclick="runValidation()" id="val-btn" style="margin-bottom:1rem;">Run Validation</button>
+    <div id="val-results"></div>
+    <!-- Preview -->
+    <div id="preview-section" style="display:none; margin-top:1.5rem; border-top:1px solid #243b5c; padding-top:1.25rem;">
+        <h3 style="font-size:0.95rem; margin-bottom:0.75rem;">Preview</h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.25rem;">
+            <div><h4 style="font-size:0.85rem; color:#8899aa; margin-bottom:0.5rem;">Deck Layout</h4><div id="preview-deck"></div></div>
+            <div><h4 style="font-size:0.85rem; color:#8899aa; margin-bottom:0.5rem;">Steps (<span id="preview-step-count">0</span>)</h4><div id="preview-steps" style="max-height:300px; overflow-y:auto;"></div></div>
+        </div>
+        <button class="btn btn-success" onclick="saveTask()" id="save-btn" style="width:100%; justify-content:center; padding:0.75rem; font-size:1rem;">Save Task</button>
+        <div id="save-result" style="margin-top:0.75rem;"></div>
+    </div>
+</div>
+</div>
+
+<!-- ===== Step 4: Calibration ===== -->
+<div class="wiz-panel" id="panel-3">
+<div class="card" style="padding:1.5rem;">
+    <h2 style="margin-bottom:0.5rem;">Calibration</h2>
+    <p style="color:#8899aa; font-size:0.83rem; margin-bottom:1rem;">
+        Calibrate pipette offsets for the labware in your task. Items are listed in the order they appear on the deck.
+    </p>
+
+    <!-- Task selector -->
+    <div style="display:flex; gap:0.75rem; align-items:flex-end; margin-bottom:1.25rem;">
+        <div style="flex:1;">
+            <label style="color:#8899aa; font-size:0.8rem;">Calibrate for task:</label>
+            <select id="cal-task-select" style="width:100%;" onchange="loadCalTask()">
+                <option value="">Loading tasks...</option>
+            </select>
+        </div>
+        <button class="btn" style="background:#243b5c;" onclick="loadCalTasks()">Refresh</button>
+    </div>
+
+    <!-- Labware list to calibrate -->
+    <div id="cal-labware-list"></div>
+
+    <!-- Calibration profile status -->
+    <div style="border-top:1px solid #243b5c; padding-top:1rem; margin-top:1.25rem;">
+        <h3 style="font-size:0.9rem; margin-bottom:0.75rem; color:#8899aa;">Calibration Profile</h3>
+        <div id="cal-profile-status"></div>
+    </div>
+
+    <div style="display:flex; gap:0.75rem; margin-top:1.25rem;">
+        <button class="btn btn-primary" style="text-decoration:none;" onclick="showToast('Demo mode - no server','warning')">Open Calibration Tool</button>
+        <button class="btn" style="background:#243b5c;" onclick="loadCalTask()">Refresh Status</button>
+    </div>
+</div>
+</div>
+
+<!-- ===== Step 5: Create Run ===== -->
+<div class="wiz-panel" id="panel-4">
+<div class="card" style="padding:2rem; text-align:center;">
+    <div style="font-size:3rem; margin-bottom:0.75rem;">&#9989;</div>
+    <h2 style="margin-bottom:0.75rem;">Ready to Go</h2>
+    <p style="color:#8899aa; margin-bottom:0.25rem;" id="run-task-name"></p>
+    <p style="color:#667788; font-size:0.85rem; margin-bottom:1.5rem;">
+        This will create a new run from your saved task and redirect to the live execution page.
+    </p>
+    <button class="btn btn-success" style="font-size:1.05rem; padding:0.8rem 2.5rem;" onclick="startFromSaved()">Create Run &amp; Start</button>
+    <div id="apply-err" style="margin-top:0.75rem; color:#ea5455;"></div>
+</div>
+</div>
+
+<div class="wiz-nav">
+    <button class="btn" style="background:#243b5c;" id="btn-prev" onclick="nav(-1)" disabled>Previous</button>
+    <button class="btn btn-primary" id="btn-next" onclick="nav(1)">Next</button>
+</div>
     </main>
 
     <div class="toast-container" id="toast-container"></div>
 
     <script>
-        function showToast(message, type = "info") {
-            const container = document.getElementById("toast-container");
-            const toast = document.createElement("div");
+        function showToast(message, type) {
+            type = type || "info";
+            var container = document.getElementById("toast-container");
+            var toast = document.createElement("div");
             toast.className = "toast toast-" + type;
             toast.textContent = message;
             container.appendChild(toast);
-            setTimeout(() => { toast.remove(); }, 3000);
+            setTimeout(function(){ toast.remove(); }, 3000);
         }
 
-const PROMPT_TEMPLATE = `You are a code generator for OpenOT2, an open-source framework for controlling Opentrons OT-2 liquid handling robots via a web interface.
+        async function apiPost(url, body) {
+            showToast("Demo mode - no server", "warning");
+            return null;
+        }
+    </script>
 
-Your task: given the user's experiment description below, generate ALL the code needed to create a task-specific web interface that the user can run immediately.
+    <script>
+let step = 0; const TOTAL = 5; let valOk = false;
+const SLOTS = [10,11,12,7,8,9,4,5,6,1,2,3];
 
-=== PROJECT ARCHITECTURE ===
+function goStep(i){step=i;render();} function nav(d){step=Math.max(0,Math.min(TOTAL-1,step+d));render();}
+function render(){
+    document.querySelectorAll(".wiz-panel").forEach((p,i)=>p.classList.toggle("active",i===step));
+    document.querySelectorAll(".wiz-ind").forEach((ind,i)=>{ind.classList.remove("active","done");if(i<step)ind.classList.add("done");else if(i===step)ind.classList.add("active");});
+    document.getElementById("btn-prev").disabled=step===0;
+    document.getElementById("btn-next").style.display=step===TOTAL-1?"none":"";
+    if(step===3)loadCalTasks();
+}
 
-OpenOT2 is split into 4 packages:
+// -- Step 1: Connection --
+async function checkConn(){
+    const ic=document.getElementById("conn-icon"),t=document.getElementById("conn-title"),d=document.getElementById("conn-detail");
+    ic.innerHTML="&#10007;";ic.className="conn-icon fail";t.textContent="Demo Mode";d.textContent="No server connected - static demo page";
+    showToast("Demo mode - no server","warning");
+}
+async function checkIP(){
+    showToast("Demo mode - no server","warning");
+}
+checkConn();
 
-1. openot2/ — Robot control core
-   - OT2Client: HTTP client for OT-2 (create_run, load_pipette, load_labware, aspirate, dispense, pick_up_tip, drop_tip, blow_out, home, move_to_well)
-   - OT2Operations: High-level workflows (transfer, mix, rinse)
-   - control/: Task runner (models.py, runner.py, store.py) — RunStep, TaskRun, TaskRunner
+// -- Step 2: Prompt --
+const EXAMPLES={color_mixing:`Color Mixing:\n3 source reservoirs (Red slot 7, Green slot 8, Blue slot 9), cleaning reservoir slot 4, destination 96-well plate slot 1, tipracks slots 10-11. P300 single left mount.\nTransfer varying R/G/B volumes per well, rinse between colors, mix after adding all colors.`,serial_dilution:`Serial Dilution:\nStock in 12-well reservoir slot 7, diluent slot 8, destination plate slot 1, tiprack slot 10. P300 multi right mount.\nFill wells with 100uL diluent, add 100uL stock to column 1, serial transfer 100uL across columns, mix 3x each.`,cell_seeding:`Cell Seeding:\nCell suspension slot 7, media slot 8, plate slot 1, tiprack slot 10. P300 multi.\nAdd 100uL media to all wells, transfer 100uL cells per column, gentle mix 2x.`,reagent_dist:`Reagent Distribution:\nReagent A slot 7, B slot 8, C slot 9. Plate slot 1, tipracks 10-11.\nA 50uL to rows A-C, B 75uL to rows D-F, C 25uL to rows G-H. Rinse between reagents.`};
+function loadEx(k){document.getElementById("task-desc").value=EXAMPLES[k]||"";showToast("Example loaded","info");}
 
-2. vision/ — Computer vision (USBCamera, TipAnalyzer, LiquidAnalyzer)
+const PROMPT_TPL=`You are an expert code generator for OpenOT2, an open-source framework for controlling Opentrons OT-2 liquid handling robots through a web interface.
 
-3. protocol/ — Protocol execution (ProtocolExecutor, ErrorRecovery, ProtocolGenerator)
+IMPORTANT: Before generating, read the latest source code and documentation:
+- GitHub repository: https://github.com/xthomaswang/OpenOT2
+- Online documentation: https://xthomaswang.github.io/OpenOT2/
+- Key source files to reference:
+  - webapp/handlers.py — all built-in step handler implementations
+  - openot2/client.py — OT2Client HTTP API (all robot commands)
+  - openot2/operations.py — OT2Operations high-level workflows (transfer, mix, rinse)
+  - webapp/web.py — FastAPI endpoints and app factory
+  - webapp/templates/base.html — UI theme, CSS classes, JS helpers
 
-4. webapp/ — Web application layer
-   - WebApp: Main facade class
-   - DeckConfig: Declarative deck layout (from YAML)
-   - OT2StepHandlers: Built-in step handlers
-   - web.py: FastAPI app factory with all API endpoints
-   - templates/: Jinja2 HTML templates (extends base.html)
+================================================================================
+SECTION 1: SYSTEM ARCHITECTURE
+================================================================================
 
-=== KEY APIs ===
+OpenOT2 executes robot tasks as a sequence of "steps". Each step has:
+- "name": human-readable label (string)
+- "kind": which handler to invoke (must be one of the built-in kinds below)
+- "params": dict of parameters passed to the handler
 
-OT2Client methods:
-  client.create_run() -> run_id
-  client.load_pipette(name, mount) -> pipette_id          # e.g. "p300_single_gen2", "left"
-  client.load_labware(name, slot) -> labware_id            # e.g. "corning_96_wellplate_360ul_flat", "1"
-  client.use_pipette(mount)                                # "left" or "right"
-  client.get_labware_id(slot) -> labware_id
-  client.pick_up_tip(labware_id, well)
-  client.aspirate(volume, labware_id, well)
-  client.dispense(volume, labware_id, well)
-  client.blow_out(labware_id=None, well=None)
-  client.drop_tip(labware_id, well)                        # return tip to tiprack
-  client.drop_tip_in_trash()
-  client.move_to_well(labware_id, well, offset=None)
-  client.home()
+The system loads a deck configuration (pipettes + labware on slots), then executes
+steps sequentially. Steps can be paused/resumed. Each step is atomic — it either
+succeeds or fails, and the system records the result.
 
-OT2Operations(client, rinse_cycles=3, rinse_volume=250):
-  ops.transfer(tiprack_id, source_id, dest_id, tip_well, source_well, dest_well, volume, cleaning_id=None, rinse_col=None)
-  ops.mix(tiprack_id, labware_id, tip_well, mix_well, cycles=3, volume=200, cleaning_id=None, rinse_col=None)
-  ops.rinse(cleaning_id, well, cycles=None, volume=None)
+================================================================================
+SECTION 2: COMPLETE STEP HANDLER REFERENCE
+================================================================================
 
-=== WEBAPP STRUCTURE ===
+Each handler below is documented with: description, ALL parameters (required and
+optional), parameter types, constraints, and an example.
 
-Startup: python -m webapp --config .config/deck.yaml --robot <IP>
+--- "home" ---
+Description: Home all robot axes (return to safe position).
+Params: {} (no parameters)
+Example: {"name": "Home robot", "kind": "home", "params": {}}
 
-DeckConfig YAML (.config/deck.yaml):
-  pipettes:
-    left: p300_single_gen2
-    right: p300_multi_gen2
-  labware:
-    "1": corning_96_wellplate_360ul_flat
-    "7": nest_12_reservoir_15ml
-    "10": opentrons_96_filtertiprack_200ul
-  active_pipette: left
+--- "pick_up_tip" ---
+Description: Pick up a tip from a tiprack. MUST be called before any aspirate/dispense.
+Params:
+  "slot" (string, REQUIRED): Tiprack slot number, e.g. "10"
+  "well" (string, optional, default "A1"): Which tip to pick up.
+    - Single-channel: "A1" through "H12" (picks one tip)
+    - Multi-channel: Use column notation "A1"-"A12" (picks 8 tips in that column)
+Example: {"name": "Pick up tip", "kind": "pick_up_tip", "params": {"slot": "10", "well": "A1"}}
 
-Built-in step handler kinds and their params:
-  "home"          — {}
-  "aspirate"      — {slot, well, volume}
-  "dispense"      — {slot, well, volume}
-  "move"          — {slot, well, offset?}
-  "pick_up_tip"   — {slot, well}
-  "drop_tip"      — {}
-  "blow_out"      — {}
-  "use_pipette"   — {mount}
-  "transfer"      — {tiprack_slot, tip_well, source_slot, source_well, dest_slot, dest_well, volume, cleaning_slot?, rinse_well?}
-  "mix"           — {tiprack_slot, tip_well, plate_slot, mix_well, cycles, volume, cleaning_slot?, rinse_well?}
+--- "drop_tip" ---
+Description: Drop the current tip(s) into the trash (slot 12). Call after you're done with the tip.
+Params: {} (no parameters)
+Example: {"name": "Drop tip", "kind": "drop_tip", "params": {}}
 
-WebApp custom handler registration:
-  from webapp import WebApp
+--- "aspirate" ---
+Description: Aspirate (suck up) liquid from a well. Tip must already be on the pipette.
+Params:
+  "slot" (string, REQUIRED): Source labware slot number
+  "well" (string, optional, default "A1"): Source well
+  "volume" (number, REQUIRED): Volume in microliters (uL). Must not exceed pipette max capacity.
+Constraints:
+  - P20: max 20 uL
+  - P300: max 300 uL
+  - P1000: max 1000 uL
+Example: {"name": "Aspirate 100uL from reservoir", "kind": "aspirate", "params": {"slot": "7", "well": "A1", "volume": 100}}
 
-  def my_handler(step, context=None):
-      # step.params has the params dict
-      # Access client via webapp.client, ops via webapp.ops
-      return {"result": "done"}
+--- "dispense" ---
+Description: Dispense (push out) liquid into a well. Tip must already be on with aspirated liquid.
+Params:
+  "slot" (string, REQUIRED): Destination labware slot number
+  "well" (string, optional, default "A1"): Destination well
+  "volume" (number, REQUIRED): Volume in microliters (uL)
+Example: {"name": "Dispense 100uL to plate", "kind": "dispense", "params": {"slot": "1", "well": "A1", "volume": 100}}
 
-  app = WebApp.from_yaml(".config/deck.yaml", robot_ip="...")
-  app.register_handler("my_custom_kind", my_handler)
-  app.run()
+--- "blow_out" ---
+Description: Blow out any remaining liquid from the tip. Useful after dispensing to ensure
+  all liquid is expelled. Does NOT require specific params — blows out at current position.
+Params: {} (no parameters)
+Example: {"name": "Blow out", "kind": "blow_out", "params": {}}
 
-=== WEB TEMPLATE PATTERNS ===
+--- "move" ---
+Description: Move pipette to a specific well without aspirating or dispensing. Useful for
+  visual checks or positioning.
+Params:
+  "slot" (string, REQUIRED): Labware slot number
+  "well" (string, optional, default "A1"): Target well
+  "offset" (array of 3 numbers, optional): [x, y, z] offset in mm from well center.
+    Positive z = up, negative z = down. Example: [0, 0, 10] = 10mm above well.
+Example: {"name": "Move above plate A1", "kind": "move", "params": {"slot": "1", "well": "A1", "offset": [0, 0, 10]}}
 
-All templates extend base.html which provides:
-- Dark theme (#0a1628 background, #1a2d4a cards)
-- Sidebar navigation (Dashboard, Generate, Hardware, Calibration)
-- Toast notifications: showToast(message, "success"|"error"|"warning"|"info")
-- API helper: apiPost(url, body) -> returns JSON or null on error
-- CSS classes: .card, .badge, .badge-{status}, .btn, .btn-primary/success/warning/danger, .progress-bar
+--- "use_pipette" ---
+Description: Switch which pipette is active. Only needed if deck has two pipettes.
+Params:
+  "mount" (string, REQUIRED): "left" or "right"
+Example: {"name": "Switch to left pipette", "kind": "use_pipette", "params": {"mount": "left"}}
 
-Template structure:
-  {% extends "base.html" %}
-  {% block title %}OpenOT2 - My Task{% endblock %}
-  {% block extra_styles %}<style>/* page-specific CSS */</style>{% endblock %}
-  {% block content %}
-  <h1>My Task Page</h1>
-  <!-- page content using .card, .btn, etc. -->
-  {% endblock %}
-  {% block scripts %}
-  <script>
-  // Use apiPost() for API calls, showToast() for notifications
-  async function doSomething() {
-      const data = await apiPost("/api/my-endpoint", {param: "value"});
-      if (data) showToast("Done!", "success");
-  }
-  </script>
-  {% endblock %}
+--- "transfer" ---
+Description: COMPOSITE operation — performs the complete cycle:
+  pick_up_tip → aspirate → dispense → blow_out → optional rinse → drop_tip
+  This is the most commonly used step kind. Use this instead of manually sequencing
+  pick_up_tip + aspirate + dispense + drop_tip whenever possible.
+Params:
+  "tiprack_slot" (string, REQUIRED): Slot of the tiprack
+  "tip_well" (string, REQUIRED): Which tip to use, e.g. "A1"
+  "source_slot" (string, REQUIRED): Slot of the source labware
+  "source_well" (string, REQUIRED): Well to aspirate from
+  "dest_slot" (string, REQUIRED): Slot of the destination labware
+  "dest_well" (string, REQUIRED): Well to dispense into
+  "volume" (number, REQUIRED): Volume in uL
+  "cleaning_slot" (string, optional): Slot of cleaning/rinse reservoir. If provided with
+    rinse_well, the tip is rinsed after dispensing (3 cycles of aspirate+dispense in rinse well).
+  "rinse_well" (string, optional): Well in the cleaning reservoir to rinse in. Must be
+    provided together with cleaning_slot.
+Example: {"name": "Transfer 100uL R7→P1 A1", "kind": "transfer", "params": {
+  "tiprack_slot": "10", "tip_well": "A1",
+  "source_slot": "7", "source_well": "A1",
+  "dest_slot": "1", "dest_well": "A1",
+  "volume": 100,
+  "cleaning_slot": "4", "rinse_well": "A1"
+}}
 
-To add a new page:
-1. Add route in webapp/web.py: @app.get("/my-task", response_class=HTMLResponse)
-2. Create webapp/templates/my_task.html extending base.html
-3. Add sidebar link in base.html (optional)
+--- "mix" ---
+Description: COMPOSITE operation — performs:
+  pick_up_tip → N cycles of (aspirate + dispense in same well) → blow_out → optional rinse → drop_tip
+  Used to mix the contents of a well after adding reagents.
+Params:
+  "tiprack_slot" (string, REQUIRED): Slot of the tiprack
+  "tip_well" (string, REQUIRED): Which tip to use
+  "plate_slot" (string, REQUIRED): Slot of the plate to mix in
+  "mix_well" (string, REQUIRED): Well to mix
+  "cycles" (integer, REQUIRED): Number of aspirate/dispense cycles (typically 3-5)
+  "volume" (number, REQUIRED): Volume per cycle in uL (typically 50-80% of well volume)
+  "cleaning_slot" (string, optional): Rinse reservoir slot
+  "rinse_well" (string, optional): Rinse well
+Example: {"name": "Mix A1 3x", "kind": "mix", "params": {
+  "tiprack_slot": "10", "tip_well": "A2",
+  "plate_slot": "1", "mix_well": "A1",
+  "cycles": 3, "volume": 150,
+  "cleaning_slot": "4", "rinse_well": "A2"
+}}
 
-To add API endpoints in web.py:
-  @app.post("/api/my-task/run")
-  async def run_my_task(body: dict):
-      # Access client, store, runner from closure
-      return {"status": "ok"}
+================================================================================
+SECTION 3: LABWARE CATALOG
+================================================================================
 
-=== COMMON LABWARE NAMES ===
+--- PIPETTES ---
+Name                    | Channels | Volume Range | Typical Use
+p20_single_gen2         | 1        | 1-20 uL      | Small volumes, precision work
+p300_single_gen2        | 1        | 20-300 uL     | General purpose single-channel
+p1000_single_gen2       | 1        | 100-1000 uL   | Large volumes
+p20_multi_gen2          | 8        | 1-20 uL       | Small volumes, full rows at once
+p300_multi_gen2         | 8        | 20-300 uL     | General purpose multi-channel
 
-Pipettes: p20_single_gen2, p300_single_gen2, p1000_single_gen2, p20_multi_gen2, p300_multi_gen2
-Tipracks: opentrons_96_tiprack_20ul, opentrons_96_tiprack_300ul, opentrons_96_filtertiprack_200ul
-Plates: corning_96_wellplate_360ul_flat, opentrons_96_wellplate_200ul_pcr_full_skirt
-Reservoirs: nest_12_reservoir_15ml, opentrons_tough_1_reservoir_300ml
-OT-2 deck: slots 1-11 (slot 12 = fixed trash)
+Multi-channel pipettes operate on 8 wells simultaneously (one full column A-H).
+When using multi-channel, well "A1" means column 1 (wells A1-H1).
 
-=== USER'S EXPERIMENT ===
+--- TIPRACKS ---
+Name                                | Compatible Pipettes    | Tip Volume
+opentrons_96_tiprack_20ul           | p20_single, p20_multi  | 20 uL
+opentrons_96_tiprack_300ul          | p300_single, p300_multi| 300 uL
+opentrons_96_filtertiprack_200ul    | p300_single, p300_multi| 200 uL (filtered)
 
-TASK_PLACEHOLDER
+Tipracks have 96 tips in 8 rows (A-H) x 12 columns (1-12).
+Tips are consumed left-to-right, top-to-bottom: A1, B1, C1...H1, A2, B2...
+For multi-channel: consume by column: A1 (=col 1), A2 (=col 2), etc.
 
-=== ADDITIONAL OPTIONS ===
+--- PLATES ---
+Name                                        | Wells | Well Volume | Description
+corning_96_wellplate_360ul_flat             | 96    | 360 uL      | Standard flat-bottom 96-well
+opentrons_96_wellplate_200ul_pcr_full_skirt | 96    | 200 uL      | PCR plate
 
-OPTIONS_PLACEHOLDER
+96-well plates: 8 rows (A-H) x 12 columns (1-12). Wells: A1, A2...A12, B1...H12.
 
-=== OUTPUT REQUIREMENTS ===
+--- RESERVOIRS ---
+Name                                | Wells | Well Volume  | Description
+nest_12_reservoir_15ml              | 12    | 15 mL each   | 12-channel reservoir (wells A1-A12)
+opentrons_tough_1_reservoir_300ml   | 1     | 300 mL       | Single-trough reservoir (well A1)
 
-Generate ALL of the following files. Output each file with a clear filename header:
+12-channel reservoirs: wells are A1 through A12 (one row).
+Single-trough: only well A1. All 8 channels of a multi-channel pipette can access it.
 
-1. .config/deck.yaml — Deck configuration for this experiment
-2. webapp/templates/task.html — Custom Jinja2 template (extends base.html) with:
-   - Input form for experiment parameters
-   - Run button that creates and starts a task run via API
-   - Real-time progress display
-   - Results/output display
-3. Custom code to add to webapp/web.py — New API endpoints for this task (add within create_app function)
-4. Custom handlers (if built-in ones are insufficient) — Python functions to register with app.register_handler()
-5. A startup script or instructions showing how to run everything
+================================================================================
+SECTION 4: OT-2 DECK LAYOUT
+================================================================================
+
+The OT-2 deck has 11 usable slots numbered 1-11. Slot 12 is the fixed trash.
+
+Physical layout (as viewed from the front of the robot):
+
+    [10] [11] [12=TRASH]
+    [ 7] [ 8] [ 9]
+    [ 4] [ 5] [ 6]
+    [ 1] [ 2] [ 3]
 
 Rules:
-- Use the existing base.html dark theme and CSS classes (.card, .btn, .badge, etc.)
-- Use showToast() for notifications, apiPost() for API calls
-- Keep it simple — use built-in step handlers when possible
-- All templates must extend base.html
-- Generate working, complete code — no placeholders or TODOs`;
+- Each slot holds exactly ONE piece of labware.
+- Slot 12 is always trash — never assign labware to slot 12.
+- Place tipracks in higher-numbered slots (10, 11) to avoid collisions.
+- Place source reservoirs in middle slots (4-9).
+- Place destination plates in lower slots (1-3).
+- Maximum 2 pipettes (one per mount: left and right).
 
-const EXAMPLES = {
-    color_mixing: `Color Mixing Experiment:
-I want to mix RGB food coloring to create target colors on a 96-well plate.
+================================================================================
+SECTION 5: WELL NAMING CONVENTIONS
+================================================================================
 
-Setup:
-- 3 source reservoirs (Red in slot 7, Green in slot 8, Blue in slot 9)
-- 1 cleaning reservoir in slot 4
-- 1 destination 96-well plate in slot 1
-- Tipracks in slots 10, 11
-- P300 single-channel pipette on left mount
+96-well format: Rows A-H, Columns 1-12
+  A1  A2  A3  ... A12
+  B1  B2  B3  ... B12
+  ...
+  H1  H2  H3  ... H12
 
-Web interface should:
-- Let me input target colors as RGB values (0-255) for each well
-- Calculate the corresponding volumes (max 200uL total per well)
-- Show a color preview grid of what the plate should look like
-- Execute transfers with rinsing between different colors
-- Show progress in real-time`,
+12-well reservoir: A1 through A12 (single row)
+Single-trough reservoir: A1 only
 
-    serial_dilution: `Serial Dilution Protocol:
-I need to perform a 1:2 serial dilution across a 96-well plate row.
+Multi-channel pipettes:
+  - When you specify "A1", the 8-channel pipette accesses A1, B1, C1, D1, E1, F1, G1, H1
+  - When you specify "A3", it accesses A3, B3, C3, D3, E3, F3, G3, H3
+  - For 12-well reservoirs, all 8 tips go into the same trough
 
-Setup:
-- Stock solution in a 12-well reservoir in slot 7
-- Diluent (buffer) in a reservoir in slot 8
-- Destination 96-well plate in slot 1
-- Tiprack in slot 10
-- P300 multi-channel pipette on right mount
+Tip tracking for multi-channel:
+  - First tip pickup: "A1" (uses column 1, 8 tips)
+  - Second pickup: "A2" (uses column 2, 8 tips)
+  - Each column provides one set of tips for multi-channel
 
-Web interface should:
-- Let me specify: starting volume, dilution factor, number of dilutions, number of replicates
-- Pre-fill plate with diluent first
-- Transfer and mix through the dilution series
-- Show which wells are being processed in real-time`,
+================================================================================
+SECTION 6: COMMON WORKFLOW PATTERNS
+================================================================================
 
-    cell_seeding: `Cell Seeding Protocol:
-I need to seed cells from a reservoir into a 96-well plate at different densities.
+Pattern 1: Simple transfer (one reagent to one well)
+  1. pick_up_tip → 2. aspirate → 3. dispense → 4. blow_out → 5. drop_tip
+  OR simply use one "transfer" step (recommended)
 
-Setup:
-- Cell suspension in reservoir slot 7
-- Media in reservoir slot 8
-- 96-well plate in slot 1
-- Tiprack in slot 10
-- P300 multi-channel pipette
+Pattern 2: Multiple reagents to same well (e.g., color mixing)
+  For each reagent:
+    1. transfer (with cleaning_slot + rinse_well to rinse between reagents)
+  After all reagents added:
+    2. mix (to combine)
 
-Web interface should:
-- Input target cell density per well or per row
-- Calculate volumes based on stock concentration
-- Support different patterns (full plate, selected rows, gradient)
-- Mix gently after dispensing`,
+Pattern 3: Serial dilution
+  1. Pre-fill all destination wells with diluent (transfer diluent to each well)
+  2. Add concentrated sample to first well
+  3. Mix first well
+  4. Transfer from well N to well N+1, mix, repeat
 
-    reagent_distribution: `Reagent Distribution:
-I need to distribute multiple reagents from reservoirs to specific wells on a plate.
+Pattern 4: Reagent distribution (same reagent to many wells)
+  Option A: Pick up tip once, aspirate, dispense to multiple wells, drop tip
+    (use individual aspirate/dispense steps — more efficient, fewer tip changes)
+  Option B: Use "transfer" for each well (simpler but uses more tips)
 
-Setup:
-- Up to 6 reagent reservoirs in slots 4-9
-- Destination plate in slot 1
-- Tiprack in slot 10, 11
+IMPORTANT: When switching between different reagents/liquids, ALWAYS rinse the tip
+(use cleaning_slot + rinse_well in "transfer") or use a new tip to prevent cross-contamination.
 
-Web interface should:
-- Let me define reagent names and their slots
-- Create a plate map where I assign reagents and volumes to each well
-- Support different volumes per well
-- Execute in an optimized order to minimize tip changes`,
+================================================================================
+SECTION 7: USER'S EXPERIMENT
+================================================================================
 
-    sample_consolidation: `Sample Consolidation:
-I need to collect samples from multiple wells into a single tube/well.
+%%TASK%%
 
-Setup:
-- Source plate with samples in slot 1
-- Collection reservoir in slot 4
-- Tiprack in slot 10
+%%OPTS%%
 
-Web interface should:
-- Let me select which source wells to collect from
-- Specify volume per well
-- Track total collected volume
-- Option to mix after each addition`
-};
+================================================================================
+SECTION 8: OUTPUT FORMAT — STRICT REQUIREMENTS
+================================================================================
 
-function loadExample(key) {
-    document.getElementById("task-description").value = EXAMPLES[key] || "";
-    showToast("Loaded " + key.replace(/_/g, " ") + " example", "info");
+You MUST output EXACTLY 3 sections with the EXACT headers shown below.
+Do NOT output any text before the first section or after the last section.
+Do NOT wrap sections in markdown code blocks.
+
+--- DECK CONFIG (YAML) ---
+pipettes:
+  left: <pipette_name>          # or omit if not used
+  right: <pipette_name>         # or omit if not used
+labware:
+  "<slot_number>": <labware_name>
+  "<slot_number>": <labware_name>
+  ...
+active_pipette: <mount>         # "left" or "right" — which to use first
+
+YAML rules:
+- Slot numbers MUST be quoted strings: "1", "7", "10" (not bare integers)
+- Use exact labware names from the catalog above
+- Do not assign anything to slot "12" (trash)
+- Include ALL labware needed for the experiment
+
+--- STEPS (JSON) ---
+[
+  {"name": "<descriptive name>", "kind": "<handler_kind>", "params": {<params>}},
+  {"name": "<descriptive name>", "kind": "<handler_kind>", "params": {<params>}},
+  ...
+]
+
+JSON rules:
+- Must be a valid JSON array (no trailing commas, no comments)
+- Every step MUST have "name" (string), "kind" (string), and "params" (object)
+- "kind" must be exactly one of: home, pick_up_tip, drop_tip, aspirate, dispense,
+  blow_out, move, use_pipette, transfer, mix
+- All slot values inside params must be strings: "7" not 7
+- Include every individual step — do not use shorthand or "repeat N times" notation
+- For experiments with many wells, generate ALL steps explicitly
+- Name each step descriptively: "Transfer 50uL Red to A1" not "Step 1"
+- Use "transfer" composite steps when possible to reduce step count
+
+--- TEMPLATE (HTML) ---
+NONE
+
+(Output "NONE" unless the task specifically requires a custom web UI page.
+Most tasks work fine with the default run monitor page.)
+
+================================================================================
+SECTION 9: VALIDATION CHECKLIST (verify before outputting)
+================================================================================
+
+Before outputting, verify:
+[ ] Every aspirate/dispense is preceded by a pick_up_tip (or is inside a transfer/mix)
+[ ] Every pick_up_tip has a matching drop_tip (or is inside a transfer/mix)
+[ ] No volume exceeds pipette capacity
+[ ] All slot numbers are strings in both YAML and JSON
+[ ] No labware assigned to slot 12
+[ ] Tip wells don't repeat (each tip is used only once) unless rinsing
+[ ] cleaning_slot and rinse_well are always provided together (never one without the other)
+[ ] JSON is valid (no trailing commas, proper quoting)
+[ ] YAML is valid (proper indentation, quoted slot numbers)
+[ ] Step names are descriptive and unique
+[ ] All labware referenced in steps is declared in the deck config`;
+
+function genPrompt(){
+    const t=document.getElementById("task-desc").value.trim();if(!t){showToast("Describe your task","warning");return;}
+    let o=[];const p=document.getElementById("opt-pip").value,m=document.getElementById("opt-mnt").value;
+    if(p)o.push("Pipette: "+p);if(m)o.push("Mount: "+m);
+    document.getElementById("prompt-out").value=PROMPT_TPL.replace("%%TASK%%",t).replace("%%OPTS%%",o.length?o.join("\n"):"(auto-detect)");
+    document.getElementById("prompt-sec").style.display="";showToast("Prompt ready — copy to your LLM","success");
+}
+function copyPrompt(){const e=document.getElementById("prompt-out");e.select();navigator.clipboard.writeText(e.value).then(()=>showToast("Copied!","success")).catch(()=>showToast("Copy manually","warning"));}
+
+// -- Step 3: Verify --
+function deckGrid(lw){
+    let h='<div class="deck-mini">';SLOTS.forEach(s=>{const k=String(s),v=(lw&&lw[k])||"",tr=s===12;
+    h+=`<div class="slot ${tr?'trash':v?'occupied':''}""><div class="num">${s}</div><div class="lw">${tr?'Trash':v||'empty'}</div></div>`;});
+    return h+'</div>';
+}
+async function runValidation(){
+    const btn=document.getElementById("val-btn");btn.disabled=true;btn.textContent="Validating...";
+
+    // Client-side validation for demo mode
+    const deckYaml = document.getElementById("paste-deck").value.trim();
+    const stepsJson = document.getElementById("paste-steps").value.trim();
+    const templateHtml = document.getElementById("paste-tpl").value.trim();
+
+    const errors = [];
+    const warnings = [];
+
+    // Validate deck YAML
+    if (!deckYaml) {
+        errors.push({field: "deck_yaml", message: "Deck configuration is required"});
+    } else {
+        if (!/pipettes\s*:/.test(deckYaml)) {
+            errors.push({field: "deck_yaml", message: "Missing 'pipettes:' section"});
+        }
+        if (!/labware\s*:/.test(deckYaml)) {
+            errors.push({field: "deck_yaml", message: "Missing 'labware:' section"});
+        }
+    }
+
+    // Validate steps JSON
+    if (!stepsJson) {
+        errors.push({field: "steps_json", message: "Task steps are required"});
+    } else {
+        try {
+            const steps = JSON.parse(stepsJson);
+            if (!Array.isArray(steps)) {
+                errors.push({field: "steps_json", message: "Steps must be a JSON array"});
+            } else if (steps.length === 0) {
+                errors.push({field: "steps_json", message: "Steps array is empty"});
+            } else {
+                const validKinds = ["home","pick_up_tip","drop_tip","aspirate","dispense","blow_out","move","use_pipette","transfer","mix"];
+                steps.forEach((s,i) => {
+                    if (!s.name) warnings.push({field: "steps_json", message: `Step ${i+1} missing 'name'`});
+                    if (!s.kind) errors.push({field: "steps_json", message: `Step ${i+1} missing 'kind'`});
+                    else if (!validKinds.includes(s.kind)) errors.push({field: "steps_json", message: `Step ${i+1} unknown kind '${s.kind}'`});
+                    if (!s.params && s.params !== undefined) warnings.push({field: "steps_json", message: `Step ${i+1} missing 'params'`});
+                });
+            }
+        } catch(e) {
+            errors.push({field: "steps_json", message: "Invalid JSON: " + e.message});
+        }
+    }
+
+    // Template warnings
+    if (templateHtml) {
+        warnings.push({field: "template_html", message: "Custom template provided — verify it extends base.html"});
+    }
+
+    const data = {
+        valid: errors.length === 0,
+        errors: errors,
+        warnings: warnings
+    };
+
+    btn.disabled=false;btn.textContent="Run Validation";
+
+    const c=document.getElementById("val-results");let h="";
+    const de=(data.errors||[]).filter(e=>e.field==="deck_yaml"),dw=(data.warnings||[]).filter(e=>e.field==="deck_yaml");
+    const se=(data.errors||[]).filter(e=>e.field==="steps_json"),sw=(data.warnings||[]).filter(e=>e.field==="steps_json");
+    const tw=(data.warnings||[]).filter(e=>e.field==="template_html");
+    h+=de.length?`<div class="val-item fail"><div>&#10007;</div><div><strong>Deck</strong> — ${de.map(e=>e.message).join('; ')}</div></div>`:`<div class="val-item pass"><div>&#10003;</div><div><strong>Deck</strong> — OK${dw.length?' ('+dw.map(w=>w.message).join('; ')+')':''}</div></div>`;
+    h+=se.length?`<div class="val-item fail"><div>&#10007;</div><div><strong>Steps</strong> — ${se.map(e=>e.message).join('; ')}</div></div>`:`<div class="val-item pass"><div>&#10003;</div><div><strong>Steps</strong> — OK${sw.length?' ('+sw.map(w=>w.message).join('; ')+')':''}</div></div>`;
+    const tv=document.getElementById("paste-tpl").value.trim();
+    h+=!tv?'<div class="val-item pass"><div>&#8722;</div><div><strong>Template</strong> — skipped</div></div>':tw.length?`<div class="val-item warn"><div>&#9888;</div><div><strong>Template</strong> — ${tw.map(w=>w.message).join('; ')}</div></div>`:'<div class="val-item pass"><div>&#10003;</div><div><strong>Template</strong> — OK</div></div>';
+    valOk=data.valid;
+    h+=data.valid?'<div class="val-item pass" style="margin-top:1rem;border-color:#28c76f;"><div style="font-size:1.3rem;">&#9989;</div><div><strong style="color:#28c76f;">All checks passed!</strong></div></div>':'<div class="val-item fail" style="margin-top:1rem;"><div style="font-size:1.3rem;">&#10060;</div><div><strong style="color:#ea5455;">Fix errors and re-validate.</strong></div></div>';
+    c.innerHTML=h;
+    // Preview
+    if(data.valid){
+        try{
+            const yamlText=document.getElementById("paste-deck").value;const stepsRaw=JSON.parse(document.getElementById("paste-steps").value);
+            // Parse YAML labware — match "slot": labware or slot: labware under labware: section
+            const lw={};let inLabware=false;
+            yamlText.split('\n').forEach(line=>{
+                if(/^labware\s*:/.test(line)){inLabware=true;return;}
+                if(inLabware&&/^\S/.test(line)){inLabware=false;} // new top-level key
+                if(inLabware){
+                    const m=line.match(/^\s+["']?(\d+)["']?\s*:\s*["']?([^\s"'#]+)/);
+                    if(m)lw[m[1]]=m[2];
+                }
+            });
+            document.getElementById("preview-deck").innerHTML=deckGrid(lw);
+            document.getElementById("preview-step-count").textContent=stepsRaw.length;
+            let sh='';stepsRaw.forEach((s,i)=>{const k=s.kind||s.type||'?';const p=s.params||{};let ps='';if(p.slot)ps+=`s${p.slot} `;if(p.well)ps+=p.well+' ';if(p.volume)ps+=p.volume+'uL';if(p.source_slot)ps+=`${p.source_slot}\u2192${p.dest_slot||'?'} `;
+            sh+=`<div style="display:flex;gap:0.5rem;align-items:center;padding:0.4rem 0.5rem;background:#0d1b2e;border-radius:4px;margin-bottom:0.3rem;font-size:0.8rem;border-left:3px solid #243b5c;"><span style="color:#4ea8ff;font-weight:700;min-width:20px;">${i+1}</span><span>${s.name||k}</span><span style="background:#243b5c;padding:0.1rem 0.4rem;border-radius:10px;font-size:0.7rem;color:#8899aa;">${k}</span><span style="margin-left:auto;color:#667788;font-family:monospace;font-size:0.7rem;">${ps}</span></div>`;});
+            document.getElementById("preview-steps").innerHTML=sh;
+            document.getElementById("preview-section").style.display="";
+        }catch(e){}
+    }
 }
 
-function generatePrompt() {
-    const task = document.getElementById("task-description").value.trim();
-    if (!task) { showToast("Please describe your task first", "warning"); return; }
-
-    let options = [];
-    const pipette = document.getElementById("opt-pipette").value;
-    const mount = document.getElementById("opt-mount").value;
-    if (pipette) options.push("Pipette: " + pipette);
-    if (mount) options.push("Mount: " + mount);
-
-    let prompt = PROMPT_TEMPLATE
-        .replace("TASK_PLACEHOLDER", task)
-        .replace("OPTIONS_PLACEHOLDER", options.length > 0 ? options.join("\n") : "None specified — auto-detect from task description.");
-
-    document.getElementById("prompt-output").value = prompt;
-    showToast("Prompt generated! Copy and paste into your LLM.", "success");
+// -- Step 3: Save Task --
+let savedTaskId = null;
+async function saveTask(){
+    if(!valOk){showToast("Validate first","warning");return;}
+    showToast("Demo mode - no server","warning");
 }
 
-function copyPrompt() {
-    const output = document.getElementById("prompt-output");
-    output.select();
-    navigator.clipboard.writeText(output.value).then(() => {
-        const btn = document.getElementById("copy-btn");
-        btn.classList.add("copied");
-        showToast("Copied to clipboard!", "success");
-        setTimeout(() => btn.classList.remove("copied"), 2000);
-    }).catch(() => {
-        showToast("Copy failed — select and copy manually", "warning");
+// -- Step 4: Calibration (reads saved tasks) --
+let calTasks=[];
+let selectedCalTaskId=null;
+
+async function loadCalTasks(){
+    // Demo mode: show message instead of fetching
+    const sel=document.getElementById("cal-task-select");
+    sel.innerHTML='<option value="">Demo mode - no tasks available</option>';
+    document.getElementById("cal-labware-list").innerHTML='<div style="color:#667788;">Demo mode - connect to a server to calibrate labware.</div>';
+    document.getElementById("cal-profile-status").innerHTML='<div class="val-item warn"><div>&#9888;</div><div>Demo mode - no calibration profile available.</div></div>';
+}
+
+let calTargets=[]; // {slot, labware, actions, calibration_well, calibrated}
+let calIndex=-1; // which target is being calibrated (-1 = none)
+
+async function loadCalTask(){
+    showToast("Demo mode - no server","warning");
+}
+
+function renderCalList(){
+    const el=document.getElementById("cal-labware-list");
+    if(calTargets.length===0){el.innerHTML='<div style="color:#667788;">No labware found in this task.</div>';return;}
+    let h='<div style="color:#8899aa;font-size:0.8rem;margin-bottom:0.75rem;">Calibration order (by protocol sequence, same-slot actions grouped):</div>';
+    calTargets.forEach((t,i)=>{
+        const isCurrent=i===calIndex;
+        const borderColor=t.calibrated?'#28c76f':isCurrent?'#4ea8ff':'#243b5c';
+        const bgColor=isCurrent?'#1a2d4a':'#0d1b2e';
+        h+=`<div id="cal-card-${i}" style="display:flex;align-items:center;gap:0.75rem;padding:0.75rem;background:${bgColor};border:1px solid ${borderColor};border-radius:8px;margin-bottom:0.5rem;border-left:4px solid ${borderColor};transition:all 0.3s;">
+            <span style="color:${t.calibrated?'#28c76f':'#4ea8ff'};font-weight:700;font-size:1.1rem;min-width:30px;">${t.calibrated?'&#10003;':i+1}</span>
+            <div style="flex:1;">
+                <div style="font-weight:600;font-size:0.9rem;">Slot ${t.slot} <span style="color:#667788;font-weight:400;">— ${t.calibration_well}</span></div>
+                <div style="font-size:0.78rem;color:#8899aa;">${t.labware}</div>
+                <div style="display:flex;gap:0.3rem;margin-top:0.25rem;">${t.actions.map(a=>`<span style="background:#243b5c;color:#8899aa;padding:0.1rem 0.4rem;border-radius:10px;font-size:0.65rem;">${a}</span>`).join('')}</div>
+            </div>
+            ${t.calibrated
+                ?`<button class="btn" style="background:#243b5c;padding:0.3rem 0.6rem;font-size:0.78rem;" onclick="startCal(${i})">Re-calibrate</button>`
+                :`<button class="btn btn-primary" style="padding:0.3rem 0.6rem;font-size:0.78rem;" onclick="startCal(${i})">${isCurrent?'Calibrating...':'Calibrate'}</button>`
+            }
+        </div>`;
     });
+    // Inline controller (shown when calibrating)
+    h+=`<div id="cal-controller" style="display:none;margin-top:1rem;">
+        <div class="card" style="padding:1.25rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <h3 style="font-size:0.95rem;" id="cal-ctrl-title">Calibrating...</h3>
+                <span style="font-family:monospace;font-size:0.85rem;color:#4ea8ff;background:#0d1b2e;padding:0.3rem 0.75rem;border-radius:6px;" id="cal-ctrl-offset">X 0.00 &nbsp; Y 0.00 &nbsp; Z 0.00</span>
+            </div>
+
+            <!-- Step size: slider + presets -->
+            <div style="margin-bottom:1.25rem;background:#0d1b2e;border-radius:8px;padding:0.75rem 1rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                    <span style="color:#8899aa;font-size:0.8rem;">Step size</span>
+                    <span style="color:#4ea8ff;font-weight:700;font-size:0.95rem;" id="step-size-label">1.0 mm</span>
+                </div>
+                <input type="range" id="step-slider" min="0" max="100" step="1" value="20"
+                    style="width:100%;accent-color:#4ea8ff;cursor:pointer;"
+                    oninput="onSliderChange()">
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.5rem;">
+                    <button class="btn step-btn" style="background:#243b5c;padding:0.35rem 0.75rem;font-size:0.8rem;min-width:auto;" onclick="setStepVal(0.1,this)">0.1</button>
+                    <button class="btn step-btn" style="background:#243b5c;padding:0.35rem 0.75rem;font-size:0.8rem;min-width:auto;" onclick="setStepVal(0.5,this)">0.5</button>
+                    <button class="btn step-btn" style="background:#4ea8ff;padding:0.35rem 0.75rem;font-size:0.8rem;min-width:auto;" onclick="setStepVal(1,this)">1.0</button>
+                    <button class="btn step-btn" style="background:#243b5c;padding:0.35rem 0.75rem;font-size:0.8rem;min-width:auto;" onclick="setStepVal(5,this)">5.0</button>
+                    <button class="btn step-btn" style="background:#243b5c;padding:0.35rem 0.75rem;font-size:0.8rem;min-width:auto;" onclick="setStepVal(10,this)">10</button>
+                    <button class="btn step-btn" style="background:#243b5c;padding:0.35rem 0.75rem;font-size:0.8rem;min-width:auto;" onclick="setStepVal(50,this)">50</button>
+                </div>
+                <div style="color:#667788;font-size:0.7rem;margin-top:0.4rem;">mm per click — drag slider or pick a preset</div>
+            </div>
+
+            <!-- XYZ controls: X left/right, Y up/down, Z up/down -->
+            <div style="display:flex;gap:1.5rem;justify-content:center;flex-wrap:wrap;">
+                <!-- X axis: left / right -->
+                <div style="text-align:center;">
+                    <div style="color:#667788;font-size:0.75rem;margin-bottom:0.4rem;">X Axis</div>
+                    <div style="display:flex;gap:0.4rem;align-items:center;">
+                        <button class="btn" style="background:#243b5c;padding:0.5rem 1rem;font-size:0.85rem;min-width:55px;" onclick="nudgeCal('x',-calStep)">&#9664; X-</button>
+                        <button class="btn" style="background:#243b5c;padding:0.5rem 1rem;font-size:0.85rem;min-width:55px;" onclick="nudgeCal('x',calStep)">X+ &#9654;</button>
+                    </div>
+                </div>
+                <!-- Y axis: up / down -->
+                <div style="text-align:center;">
+                    <div style="color:#667788;font-size:0.75rem;margin-bottom:0.4rem;">Y Axis</div>
+                    <div style="display:flex;flex-direction:column;gap:0.4rem;align-items:center;">
+                        <button class="btn" style="background:#243b5c;padding:0.5rem 1rem;font-size:0.85rem;min-width:55px;" onclick="nudgeCal('y',calStep)">&#9650; Y+</button>
+                        <button class="btn" style="background:#243b5c;padding:0.5rem 1rem;font-size:0.85rem;min-width:55px;" onclick="nudgeCal('y',-calStep)">Y- &#9660;</button>
+                    </div>
+                </div>
+                <!-- Z axis: up / down -->
+                <div style="text-align:center;">
+                    <div style="color:#667788;font-size:0.75rem;margin-bottom:0.4rem;">Z Axis</div>
+                    <div style="display:flex;flex-direction:column;gap:0.4rem;align-items:center;">
+                        <button class="btn" style="background:#243b5c;padding:0.5rem 1rem;font-size:0.85rem;min-width:55px;" onclick="nudgeCal('z',calStep)">&#9650; Z+</button>
+                        <button class="btn" style="background:#243b5c;padding:0.5rem 1rem;font-size:0.85rem;min-width:55px;" onclick="nudgeCal('z',-calStep)">Z- &#9660;</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:0.75rem;justify-content:center;margin-top:1.5rem;">
+                <button class="btn btn-success" style="padding:0.5rem 2rem;" onclick="confirmCal()">&#10003; Confirm Position</button>
+                <button class="btn" style="background:#243b5c;" onclick="cancelCal()">Cancel</button>
+            </div>
+        </div>
+    </div>`;
+    el.innerHTML=h;
 }
+
+// Step size — slider uses log scale: 0-100 → 0.1-50mm
+let calStep=1.0;
+const S_MIN=0.1,S_MAX=50;
+
+function sliderToMm(s){return S_MIN*Math.pow(S_MAX/S_MIN,s/100);}
+function mmToSlider(v){return 100*Math.log(v/S_MIN)/Math.log(S_MAX/S_MIN);}
+function fmtMm(v){return v>=10?v.toFixed(0):v>=1?v.toFixed(1):v.toFixed(2);}
+
+function onSliderChange(){
+    calStep=sliderToMm(parseFloat(document.getElementById("step-slider").value));
+    document.getElementById("step-size-label").textContent=fmtMm(calStep)+" mm";
+    document.querySelectorAll(".step-btn").forEach(b=>b.style.background='#243b5c');
+}
+function setStepVal(v,btn){
+    calStep=v;
+    document.getElementById("step-slider").value=mmToSlider(v);
+    document.getElementById("step-size-label").textContent=fmtMm(v)+" mm";
+    document.querySelectorAll(".step-btn").forEach(b=>b.style.background='#243b5c');
+    if(btn)btn.style.background='#4ea8ff';
+}
+
+async function startCal(idx){
+    calIndex=idx;
+    renderCalList();
+    const t=calTargets[idx];
+    document.getElementById("cal-controller").style.display="block";
+    document.getElementById("cal-ctrl-title").textContent=`Slot ${t.slot} — ${t.labware} — ${t.calibration_well}`;
+    t.offset={x:0,y:0,z:0};
+    updateOffsetDisplay();
+    showToast(`Moving to Slot ${t.slot} ${t.calibration_well}...`,"info");
+}
+
+function nudgeCal(axis,delta){
+    if(calIndex<0)return;
+    const t=calTargets[calIndex];
+    t.offset[axis]=(t.offset[axis]||0)+delta;
+    updateOffsetDisplay();
+    // Demo mode: no API call
+    showToast("Demo mode - no server","warning");
+}
+
+function updateOffsetDisplay(){
+    if(calIndex<0)return;
+    const o=calTargets[calIndex].offset;
+    document.getElementById("cal-ctrl-offset").innerHTML=`X <strong>${o.x.toFixed(2)}</strong> &nbsp; Y <strong>${o.y.toFixed(2)}</strong> &nbsp; Z <strong>${o.z.toFixed(2)}</strong>`;
+}
+
+function confirmCal(){
+    if(calIndex<0)return;
+    calTargets[calIndex].calibrated=true;
+    showToast(`Slot ${calTargets[calIndex].slot} calibrated!`,"success");
+    const nextUncal=calTargets.findIndex((t,i)=>i>calIndex&&!t.calibrated);
+    calIndex=-1;
+    document.getElementById("cal-controller").style.display="none";
+    renderCalList();
+    // Auto-advance to next uncalibrated
+    if(nextUncal>=0){
+        setTimeout(()=>startCal(nextUncal),300);
+    }else if(calTargets.every(t=>t.calibrated)){
+        showToast("All labware calibrated!","success");
+    }
+}
+
+function cancelCal(){
+    calIndex=-1;
+    document.getElementById("cal-controller").style.display="none";
+    renderCalList();
+}
+
+// -- Step 5: Create Run from saved task --
+async function startFromSaved(){
+    showToast("Demo mode - no server","warning");
+    document.getElementById("apply-err").textContent="Demo mode - connect to a server to create runs.";
+}
+
+render();
     </script>
 </body>
 </html>
