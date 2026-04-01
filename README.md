@@ -279,4 +279,4 @@ pytest -m hardware        # hardware tests (requires connected OT-2)
 
 ## License
 
-MIT
+Apache 2.0
