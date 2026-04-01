@@ -120,13 +120,15 @@
     </div>
 </div>
 
-<!-- Calibration Link -->
-<div class="card" style="padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
-    <div>
-        <h2 style="font-size: 1.1rem; margin-bottom: 0.25rem;">&#8982; Robot Calibration</h2>
-        <p style="color: #8899aa; font-size: 0.9rem;">Tune pipette offsets and test aspirate/dispense positions.</p>
+<!-- Calibration Section -->
+<div class="card hw-section" style="padding: 1.5rem;">
+    <h2 style="font-size: 1.2rem; margin-bottom: 0.5rem;">&#8982; Robot Calibration</h2>
+    <p style="color: #8899aa; font-size: 0.9rem; margin-bottom: 1rem;">
+        Tune pipette offsets and test aspirate/dispense positions. Load or create a calibration profile, then nudge offsets until the pipette is perfectly aligned.
+    </p>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <a href="/calibration" class="btn btn-primary" style="text-decoration: none;">Open Calibration Tool</a>
     </div>
-    <a href="/calibration" class="btn btn-primary" style="text-decoration: none;">Open Calibration</a>
 </div>
 {% endblock %}
 

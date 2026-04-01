@@ -58,9 +58,9 @@
             border-left-color: #4ea8ff;
         }
         .sidebar-nav a .icon {
-            width: 20px;
+            width: 24px;
             text-align: center;
-            font-size: 1.1rem;
+            font-size: 1.35rem;
         }
         .sidebar-status {
             padding: 1rem 1.25rem;
@@ -250,17 +250,17 @@
                 <span class="icon">&#9632;</span>
                 <span>Dashboard</span>
             </a>
-            <a href="/setup" class="{% block nav_setup %}{% endblock %}">
-                <span class="icon">&#9881;</span>
-                <span>Setup</span>
+            <a href="/generate" class="{% block nav_generate %}{% endblock %}">
+                <span class="icon">&#9998;</span>
+                <span>Create Task</span>
+            </a>
+            <a href="/tasks" class="{% block nav_tasks %}{% endblock %}">
+                <span class="icon">&#9776;</span>
+                <span>Saved Tasks</span>
             </a>
             <a href="/hardware" class="{% block nav_hardware %}{% endblock %}">
-                <span class="icon">&#9874;</span>
+                <span class="icon">&#9881;</span>
                 <span>Hardware</span>
-            </a>
-            <a href="/calibration" class="{% block nav_calibration %}{% endblock %}">
-                <span class="icon">&#8982;</span>
-                <span>Calibration</span>
             </a>
         </nav>
         <div class="sidebar-status" onclick="toggleRobotDetail()" style="cursor:pointer;">

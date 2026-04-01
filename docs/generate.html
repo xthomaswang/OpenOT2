@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenOT2 - Generate Task</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0a1628;
+            color: #e0e6ed;
+            display: flex;
+            min-height: 100vh;
+        }
+        /* Sidebar */
+        .sidebar {
+            width: 240px;
+            background: #0d1b2e;
+            border-right: 1px solid #1a2d4a;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+        }
+        .sidebar-logo {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1a2d4a;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #4ea8ff;
+            letter-spacing: 0.5px;
+        }
+        .sidebar-logo span { color: #7ec8ff; font-weight: 400; }
+        .sidebar-nav { flex: 1; padding: 1rem 0; }
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1.25rem;
+            color: #8899aa;
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        .sidebar-nav a:hover {
+            color: #e0e6ed;
+            background: rgba(78, 168, 255, 0.08);
+        }
+        .sidebar-nav a.active {
+            color: #4ea8ff;
+            background: rgba(78, 168, 255, 0.12);
+            border-left-color: #4ea8ff;
+        }
+        .sidebar-nav a .icon {
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        .sidebar-status {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid #1a2d4a;
+            font-size: 0.85rem;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        .status-dot.connected { background: #28c76f; box-shadow: 0 0 6px rgba(40, 199, 111, 0.5); }
+        .status-dot.disconnected { background: #ea5455; }
+        .status-dot.demo { background: #ff9f43; box-shadow: 0 0 6px rgba(255, 159, 67, 0.5); }
+        /* Main content */
+        .main-content {
+            margin-left: 240px;
+            flex: 1;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+        /* Cards */
+        .card {
+            background: #1a2d4a;
+            border: 1px solid #243b5c;
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1.25rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #fff;
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary { background: #4ea8ff; }
+        .btn-primary:hover:not(:disabled) { background: #3d8de0; }
+        .btn-success { background: #28c76f; }
+        .btn-success:hover:not(:disabled) { background: #1fa85c; }
+        .btn-warning { background: #ff9f43; color: #1a1a1a; }
+        .btn-danger { background: #ea5455; }
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .toast {
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+            max-width: 400px;
+        }
+        .toast-success { background: #28c76f; }
+        .toast-error { background: #ea5455; }
+        .toast-warning { background: #ff9f43; color: #1a1a1a; }
+        .toast-info { background: #4ea8ff; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+        /* Form elements */
+        input, select, textarea {
+            background: #0d1b2e;
+            border: 1px solid #243b5c;
+            border-radius: 6px;
+            color: #e0e6ed;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #4ea8ff;
+        }
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar { width: 60px; }
+            .sidebar-logo span, .sidebar-nav a span, .sidebar-status span { display: none; }
+            .sidebar-logo { font-size: 1rem; padding: 1rem 0.5rem; text-align: center; }
+            .sidebar-nav a { justify-content: center; padding: 0.75rem; }
+            .main-content { margin-left: 60px; padding: 1rem; }
+        }
+
+        /* Page-specific styles */
+        .gen-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        @media (max-width: 1000px) { .gen-layout { grid-template-columns: 1fr; } }
+        .task-input { min-height: 200px; width: 100%; resize: vertical; font-size: 0.9rem; line-height: 1.6; }
+        .prompt-output {
+            width: 100%; min-height: 500px; resize: vertical;
+            font-family: monospace; font-size: 0.8rem; line-height: 1.5;
+            background: #0a1020; color: #c8d0da; border: 1px solid #243b5c;
+            border-radius: 8px; padding: 1rem; white-space: pre-wrap; word-break: break-word;
+        }
+        .example-chip {
+            display: inline-block; padding: 0.35rem 0.75rem; margin: 0.25rem;
+            background: #243b5c; border: 1px solid #2d4a6f; border-radius: 20px;
+            color: #8899aa; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;
+        }
+        .example-chip:hover { background: #4ea8ff; color: #fff; border-color: #4ea8ff; }
+        .copy-btn { position: relative; }
+        .copy-btn.copied::after {
+            content: 'Copied!'; position: absolute; top: -30px; left: 50%; transform: translateX(-50%);
+            background: #28c76f; color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-logo">Open<span>OT2</span></div>
+        <nav class="sidebar-nav">
+            <a href="index.html">
+                <span class="icon">&#9632;</span>
+                <span>Dashboard</span>
+            </a>
+            <a href="index.html">
+                <span class="icon">&#9881;</span>
+                <span>Setup</span>
+            </a>
+            <a href="generate.html" class="active">
+                <span class="icon">&#9998;</span>
+                <span>Generate</span>
+            </a>
+            <a href="index.html">
+                <span class="icon">&#9874;</span>
+                <span>Hardware</span>
+            </a>
+            <a href="index.html">
+                <span class="icon">&#8982;</span>
+                <span>Calibration</span>
+            </a>
+        </nav>
+        <div class="sidebar-status">
+            <span class="status-dot demo"></span>
+            <span>Demo Mode</span>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <h1 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Create Your Task</h1>
+        <p style="color: #8899aa; font-size: 0.9rem; margin-bottom: 1.5rem;">
+            Describe your experiment below, generate a prompt with full API reference, then paste into any LLM (Claude Opus 4.6, GPT-5.4 Pro, Gemini 3.1 Pro). Paste back the output to validate and run.
+        </p>
+
+        <div class="gen-layout">
+            <!-- Left: Input -->
+            <div>
+                <div class="card" style="padding: 1.5rem;">
+                    <h2 style="font-size: 1.1rem; margin-bottom: 1rem;">1. Describe Your Task</h2>
+
+                    <div style="margin-bottom: 1rem;">
+                        <div style="color: #8899aa; font-size: 0.85rem; margin-bottom: 0.5rem;">Quick examples:</div>
+                        <span class="example-chip" onclick="loadExample('color_mixing')">Color Mixing</span>
+                        <span class="example-chip" onclick="loadExample('serial_dilution')">Serial Dilution</span>
+                        <span class="example-chip" onclick="loadExample('cell_seeding')">Cell Seeding</span>
+                        <span class="example-chip" onclick="loadExample('reagent_distribution')">Reagent Distribution</span>
+                        <span class="example-chip" onclick="loadExample('sample_consolidation')">Sample Consolidation</span>
+                    </div>
+
+                    <textarea class="task-input" id="task-description" placeholder="Describe your experiment in detail. Include:
+
+- What liquids/reagents you're working with
+- Source and destination labware
+- Volumes and number of transfers
+- Any special requirements (mixing, rinsing, multi-channel)
+- What parameters you want to control from the web UI
+
+Example:
+I want to mix RGB food coloring to create target colors. I have 3 source reservoirs (Red, Green, Blue) in slots 7-9 and a 96-well plate in slot 1. I need to transfer varying volumes (0-200uL) of each color to wells, then mix. I want a web page where I can input target colors as RGB values and the system calculates the volumes automatically."></textarea>
+
+                    <div style="margin-top: 1rem;">
+                        <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem;">Deck Layout (optional)</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                            <div>
+                                <label style="color: #8899aa; font-size: 0.8rem;">Pipette</label>
+                                <select id="opt-pipette" style="width: 100%;">
+                                    <option value="">Auto-detect</option>
+                                    <option value="p300_single_gen2">P300 Single</option>
+                                    <option value="p300_multi_gen2">P300 Multi</option>
+                                    <option value="p20_single_gen2">P20 Single</option>
+                                    <option value="p1000_single_gen2">P1000 Single</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="color: #8899aa; font-size: 0.8rem;">Mount</label>
+                                <select id="opt-mount" style="width: 100%;">
+                                    <option value="">Auto</option>
+                                    <option value="left">Left</option>
+                                    <option value="right">Right</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-success" style="margin-top: 1.5rem; width: 100%; justify-content: center; font-size: 1rem; padding: 0.75rem;" onclick="generatePrompt()">
+                        Generate Prompt
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Output -->
+            <div>
+                <div class="card" style="padding: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h2 style="font-size: 1.1rem;">2. Copy & Paste to LLM</h2>
+                        <button class="btn btn-primary copy-btn" id="copy-btn" onclick="copyPrompt()">Copy to Clipboard</button>
+                    </div>
+                    <textarea class="prompt-output" id="prompt-output" readonly>Fill in your task description on the left and click "Generate Prompt" to create a complete LLM prompt.</textarea>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        function showToast(message, type = "info") {
+            const container = document.getElementById("toast-container");
+            const toast = document.createElement("div");
+            toast.className = "toast toast-" + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => { toast.remove(); }, 3000);
+        }
+
+const PROMPT_TEMPLATE = `You are a code generator for OpenOT2, an open-source framework for controlling Opentrons OT-2 liquid handling robots via a web interface.
+
+Your task: given the user's experiment description below, generate ALL the code needed to create a task-specific web interface that the user can run immediately.
+
+=== PROJECT ARCHITECTURE ===
+
+OpenOT2 is split into 4 packages:
+
+1. openot2/ — Robot control core
+   - OT2Client: HTTP client for OT-2 (create_run, load_pipette, load_labware, aspirate, dispense, pick_up_tip, drop_tip, blow_out, home, move_to_well)
+   - OT2Operations: High-level workflows (transfer, mix, rinse)
+   - control/: Task runner (models.py, runner.py, store.py) — RunStep, TaskRun, TaskRunner
+
+2. vision/ — Computer vision (USBCamera, TipAnalyzer, LiquidAnalyzer)
+
+3. protocol/ — Protocol execution (ProtocolExecutor, ErrorRecovery, ProtocolGenerator)
+
+4. webapp/ — Web application layer
+   - WebApp: Main facade class
+   - DeckConfig: Declarative deck layout (from YAML)
+   - OT2StepHandlers: Built-in step handlers
+   - web.py: FastAPI app factory with all API endpoints
+   - templates/: Jinja2 HTML templates (extends base.html)
+
+=== KEY APIs ===
+
+OT2Client methods:
+  client.create_run() -> run_id
+  client.load_pipette(name, mount) -> pipette_id          # e.g. "p300_single_gen2", "left"
+  client.load_labware(name, slot) -> labware_id            # e.g. "corning_96_wellplate_360ul_flat", "1"
+  client.use_pipette(mount)                                # "left" or "right"
+  client.get_labware_id(slot) -> labware_id
+  client.pick_up_tip(labware_id, well)
+  client.aspirate(volume, labware_id, well)
+  client.dispense(volume, labware_id, well)
+  client.blow_out(labware_id=None, well=None)
+  client.drop_tip(labware_id, well)                        # return tip to tiprack
+  client.drop_tip_in_trash()
+  client.move_to_well(labware_id, well, offset=None)
+  client.home()
+
+OT2Operations(client, rinse_cycles=3, rinse_volume=250):
+  ops.transfer(tiprack_id, source_id, dest_id, tip_well, source_well, dest_well, volume, cleaning_id=None, rinse_col=None)
+  ops.mix(tiprack_id, labware_id, tip_well, mix_well, cycles=3, volume=200, cleaning_id=None, rinse_col=None)
+  ops.rinse(cleaning_id, well, cycles=None, volume=None)
+
+=== WEBAPP STRUCTURE ===
+
+Startup: python -m webapp --config .config/deck.yaml --robot <IP>
+
+DeckConfig YAML (.config/deck.yaml):
+  pipettes:
+    left: p300_single_gen2
+    right: p300_multi_gen2
+  labware:
+    "1": corning_96_wellplate_360ul_flat
+    "7": nest_12_reservoir_15ml
+    "10": opentrons_96_filtertiprack_200ul
+  active_pipette: left
+
+Built-in step handler kinds and their params:
+  "home"          — {}
+  "aspirate"      — {slot, well, volume}
+  "dispense"      — {slot, well, volume}
+  "move"          — {slot, well, offset?}
+  "pick_up_tip"   — {slot, well}
+  "drop_tip"      — {}
+  "blow_out"      — {}
+  "use_pipette"   — {mount}
+  "transfer"      — {tiprack_slot, tip_well, source_slot, source_well, dest_slot, dest_well, volume, cleaning_slot?, rinse_well?}
+  "mix"           — {tiprack_slot, tip_well, plate_slot, mix_well, cycles, volume, cleaning_slot?, rinse_well?}
+
+WebApp custom handler registration:
+  from webapp import WebApp
+
+  def my_handler(step, context=None):
+      # step.params has the params dict
+      # Access client via webapp.client, ops via webapp.ops
+      return {"result": "done"}
+
+  app = WebApp.from_yaml(".config/deck.yaml", robot_ip="...")
+  app.register_handler("my_custom_kind", my_handler)
+  app.run()
+
+=== WEB TEMPLATE PATTERNS ===
+
+All templates extend base.html which provides:
+- Dark theme (#0a1628 background, #1a2d4a cards)
+- Sidebar navigation (Dashboard, Generate, Hardware, Calibration)
+- Toast notifications: showToast(message, "success"|"error"|"warning"|"info")
+- API helper: apiPost(url, body) -> returns JSON or null on error
+- CSS classes: .card, .badge, .badge-{status}, .btn, .btn-primary/success/warning/danger, .progress-bar
+
+Template structure:
+  {% extends "base.html" %}
+  {% block title %}OpenOT2 - My Task{% endblock %}
+  {% block extra_styles %}<style>/* page-specific CSS */</style>{% endblock %}
+  {% block content %}
+  <h1>My Task Page</h1>
+  <!-- page content using .card, .btn, etc. -->
+  {% endblock %}
+  {% block scripts %}
+  <script>
+  // Use apiPost() for API calls, showToast() for notifications
+  async function doSomething() {
+      const data = await apiPost("/api/my-endpoint", {param: "value"});
+      if (data) showToast("Done!", "success");
+  }
+  </script>
+  {% endblock %}
+
+To add a new page:
+1. Add route in webapp/web.py: @app.get("/my-task", response_class=HTMLResponse)
+2. Create webapp/templates/my_task.html extending base.html
+3. Add sidebar link in base.html (optional)
+
+To add API endpoints in web.py:
+  @app.post("/api/my-task/run")
+  async def run_my_task(body: dict):
+      # Access client, store, runner from closure
+      return {"status": "ok"}
+
+=== COMMON LABWARE NAMES ===
+
+Pipettes: p20_single_gen2, p300_single_gen2, p1000_single_gen2, p20_multi_gen2, p300_multi_gen2
+Tipracks: opentrons_96_tiprack_20ul, opentrons_96_tiprack_300ul, opentrons_96_filtertiprack_200ul
+Plates: corning_96_wellplate_360ul_flat, opentrons_96_wellplate_200ul_pcr_full_skirt
+Reservoirs: nest_12_reservoir_15ml, opentrons_tough_1_reservoir_300ml
+OT-2 deck: slots 1-11 (slot 12 = fixed trash)
+
+=== USER'S EXPERIMENT ===
+
+TASK_PLACEHOLDER
+
+=== ADDITIONAL OPTIONS ===
+
+OPTIONS_PLACEHOLDER
+
+=== OUTPUT REQUIREMENTS ===
+
+Generate ALL of the following files. Output each file with a clear filename header:
+
+1. .config/deck.yaml — Deck configuration for this experiment
+2. webapp/templates/task.html — Custom Jinja2 template (extends base.html) with:
+   - Input form for experiment parameters
+   - Run button that creates and starts a task run via API
+   - Real-time progress display
+   - Results/output display
+3. Custom code to add to webapp/web.py — New API endpoints for this task (add within create_app function)
+4. Custom handlers (if built-in ones are insufficient) — Python functions to register with app.register_handler()
+5. A startup script or instructions showing how to run everything
+
+Rules:
+- Use the existing base.html dark theme and CSS classes (.card, .btn, .badge, etc.)
+- Use showToast() for notifications, apiPost() for API calls
+- Keep it simple — use built-in step handlers when possible
+- All templates must extend base.html
+- Generate working, complete code — no placeholders or TODOs`;
+
+const EXAMPLES = {
+    color_mixing: `Color Mixing Experiment:
+I want to mix RGB food coloring to create target colors on a 96-well plate.
+
+Setup:
+- 3 source reservoirs (Red in slot 7, Green in slot 8, Blue in slot 9)
+- 1 cleaning reservoir in slot 4
+- 1 destination 96-well plate in slot 1
+- Tipracks in slots 10, 11
+- P300 single-channel pipette on left mount
+
+Web interface should:
+- Let me input target colors as RGB values (0-255) for each well
+- Calculate the corresponding volumes (max 200uL total per well)
+- Show a color preview grid of what the plate should look like
+- Execute transfers with rinsing between different colors
+- Show progress in real-time`,
+
+    serial_dilution: `Serial Dilution Protocol:
+I need to perform a 1:2 serial dilution across a 96-well plate row.
+
+Setup:
+- Stock solution in a 12-well reservoir in slot 7
+- Diluent (buffer) in a reservoir in slot 8
+- Destination 96-well plate in slot 1
+- Tiprack in slot 10
+- P300 multi-channel pipette on right mount
+
+Web interface should:
+- Let me specify: starting volume, dilution factor, number of dilutions, number of replicates
+- Pre-fill plate with diluent first
+- Transfer and mix through the dilution series
+- Show which wells are being processed in real-time`,
+
+    cell_seeding: `Cell Seeding Protocol:
+I need to seed cells from a reservoir into a 96-well plate at different densities.
+
+Setup:
+- Cell suspension in reservoir slot 7
+- Media in reservoir slot 8
+- 96-well plate in slot 1
+- Tiprack in slot 10
+- P300 multi-channel pipette
+
+Web interface should:
+- Input target cell density per well or per row
+- Calculate volumes based on stock concentration
+- Support different patterns (full plate, selected rows, gradient)
+- Mix gently after dispensing`,
+
+    reagent_distribution: `Reagent Distribution:
+I need to distribute multiple reagents from reservoirs to specific wells on a plate.
+
+Setup:
+- Up to 6 reagent reservoirs in slots 4-9
+- Destination plate in slot 1
+- Tiprack in slot 10, 11
+
+Web interface should:
+- Let me define reagent names and their slots
+- Create a plate map where I assign reagents and volumes to each well
+- Support different volumes per well
+- Execute in an optimized order to minimize tip changes`,
+
+    sample_consolidation: `Sample Consolidation:
+I need to collect samples from multiple wells into a single tube/well.
+
+Setup:
+- Source plate with samples in slot 1
+- Collection reservoir in slot 4
+- Tiprack in slot 10
+
+Web interface should:
+- Let me select which source wells to collect from
+- Specify volume per well
+- Track total collected volume
+- Option to mix after each addition`
+};
+
+function loadExample(key) {
+    document.getElementById("task-description").value = EXAMPLES[key] || "";
+    showToast("Loaded " + key.replace(/_/g, " ") + " example", "info");
+}
+
+function generatePrompt() {
+    const task = document.getElementById("task-description").value.trim();
+    if (!task) { showToast("Please describe your task first", "warning"); return; }
+
+    let options = [];
+    const pipette = document.getElementById("opt-pipette").value;
+    const mount = document.getElementById("opt-mount").value;
+    if (pipette) options.push("Pipette: " + pipette);
+    if (mount) options.push("Mount: " + mount);
+
+    let prompt = PROMPT_TEMPLATE
+        .replace("TASK_PLACEHOLDER", task)
+        .replace("OPTIONS_PLACEHOLDER", options.length > 0 ? options.join("\n") : "None specified — auto-detect from task description.");
+
+    document.getElementById("prompt-output").value = prompt;
+    showToast("Prompt generated! Copy and paste into your LLM.", "success");
+}
+
+function copyPrompt() {
+    const output = document.getElementById("prompt-output");
+    output.select();
+    navigator.clipboard.writeText(output.value).then(() => {
+        const btn = document.getElementById("copy-btn");
+        btn.classList.add("copied");
+        showToast("Copied to clipboard!", "success");
+        setTimeout(() => btn.classList.remove("copied"), 2000);
+    }).catch(() => {
+        showToast("Copy failed — select and copy manually", "warning");
+    });
+}
+    </script>
+</body>
+</html>

@@ -155,30 +155,41 @@ active_pipette: left
 
 #### Web UI Pages
 
-**Dashboard** (`/`) — Main run management page
-- Statistics cards showing total, running, completed, and failed runs
+**Dashboard** (`/`) — Run management
+- Statistics cards (total, running, completed, failed)
 - Card-based run list with status badges and progress bars
-- "New Run" modal for creating runs with step-by-step configuration
+- "New Run" modal with step-by-step configuration
 - Auto-refreshes every 5 seconds
 
-**Setup Wizard** (`/setup`) — 4-step guided configuration
-- Step 1: Connection check — verifies robot is online and healthy
-- Step 2: Deck configuration — visual 3x4 grid showing labware in each slot
-- Step 3: Calibration status — shows loaded profile and offset values
-- Step 4: Create run — preset templates (Transfer, Mix, Serial Dilution) or custom steps
+**Create Task** (`/generate`) — 5-step wizard to build custom tasks using any LLM
+- Step 1: **Connection** — verify OT-2 is online
+- Step 2: **Create Task** — describe experiment, generate a comprehensive prompt (full API reference, labware catalog, workflow patterns), copy to LLM, paste back the output (deck YAML + steps JSON + optional template)
+- Step 3: **Verify & Save** — YAML/JSON syntax validation, deck layout preview, step timeline preview, save to `.config/tasks/{timestamp}_{name}/`
+- Step 4: **Calibration** — auto-reads saved task's deck config, lists labware in protocol execution order (same-slot actions grouped), inline XYZ nudge controller with log-scale step size (0.1-50mm)
+- Step 5: **Create Run** — apply saved task and redirect to live run page
+
+**Saved Tasks** (`/tasks`) — Browse and re-run previously saved tasks
+- Card list sorted by timestamp (newest first)
+- Expand to see deck grid visualization, pipette info, step timeline
+- Simulate button: animated step-through preview
+- "Run This Task" to create a new run instantly
+- Delete tasks
 
 **Live Run Monitor** (`/runs/{id}`) — Real-time execution dashboard
 - Progress bar with ETA countdown and elapsed timer
-- Control buttons (Start/Pause/Resume/Abort) that auto-enable/disable based on run state
+- Control buttons (Start/Pause/Resume/Abort) with auto-enable/disable
 - Step timeline with expand/collapse for params and output
 - Chart.js bar chart showing step durations in real-time
 - Event log with color-coded entries and filters (All / Errors / Steps)
-- Polls every 2 seconds, stops when run completes
+
+**Hardware** (`/hardware`) — Device setup and diagnostics
+- Quick precheck: one-click robot + camera scan
+- Robot connection test (auto-detect or manual IP)
+- Camera scan & preview: auto-captures from all USB cameras, user selects the plate camera
+- Link to calibration tool
 
 **Calibration** (`/calibration`) — Pipette offset tuning
-- Card-based target layout with D-pad (gamepad-style) XY nudge controls
-- Separate Z up/down buttons
-- Real-time offset value display per axis
+- Card-based target layout with XYZ nudge controls
 - Test aspirate/dispense actions
 - Profile save/load/create
 

@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}OpenOT2 - Saved Tasks{% endblock %}
+{% block nav_tasks %}active{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .task-list { display: flex; flex-direction: column; gap: 1rem; }
+    .task-card {
+        background: #1a2d4a; border: 1px solid #243b5c; border-radius: 10px;
+        overflow: hidden; transition: border-color 0.2s;
+    }
+    .task-card:hover { border-color: #4ea8ff; }
+    .task-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 1.25rem; cursor: pointer;
+    }
+    .task-header-left { flex: 1; min-width: 0; }
+    .task-name { font-weight: 600; font-size: 1.05rem; margin-bottom: 0.25rem; }
+    .task-meta { font-size: 0.8rem; color: #667788; }
+    .task-badges { display: flex; gap: 0.5rem; align-items: center; }
+    .task-expand {
+        display: none; border-top: 1px solid #243b5c; padding: 1.25rem;
+        background: #15253f;
+    }
+    .task-expand.show { display: block; }
+    /* Deck grid */
+    .deck-mini {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;
+        max-width: 360px;
+    }
+    .deck-mini .slot {
+        background: #0d1b2e; border: 1px solid #243b5c; border-radius: 6px;
+        padding: 0.5rem; text-align: center; min-height: 50px; font-size: 0.75rem;
+    }
+    .deck-mini .slot .num { color: #4ea8ff; font-weight: 700; font-size: 0.8rem; }
+    .deck-mini .slot .lw { color: #8899aa; margin-top: 0.15rem; word-break: break-all; }
+    .deck-mini .slot.occupied { border-color: #28c76f40; }
+    .deck-mini .slot.trash { border-color: #ea545540; }
+    /* Step timeline preview */
+    .step-preview { display: flex; flex-direction: column; gap: 0.5rem; max-height: 400px; overflow-y: auto; }
+    .step-pre-item {
+        display: flex; align-items: center; gap: 0.75rem;
+        padding: 0.6rem 0.75rem; background: #0d1b2e; border-radius: 6px;
+        border-left: 3px solid #243b5c; font-size: 0.85rem;
+    }
+    .step-pre-item .idx { color: #4ea8ff; font-weight: 700; min-width: 24px; text-align: center; }
+    .step-pre-item .kind-badge {
+        background: #243b5c; color: #8899aa; padding: 0.15rem 0.5rem;
+        border-radius: 12px; font-size: 0.7rem; font-weight: 600;
+    }
+    .step-pre-item .params { color: #667788; font-family: monospace; font-size: 0.75rem; margin-left: auto; }
+    /* Action bar */
+    .task-actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; flex-wrap: wrap; }
+    /* Simulation */
+    .sim-bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+    .sim-counter { color: #8899aa; font-size: 0.85rem; }
+    /* Two column detail */
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
+    .detail-section h3 { font-size: 0.95rem; margin-bottom: 0.75rem; color: #8899aa; }
+    .empty-state { text-align: center; color: #667788; padding: 4rem 2rem; }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <h1 style="font-size: 1.5rem;">Saved Tasks</h1>
+    <a href="/generate" class="btn btn-primary" style="text-decoration: none;">+ Create New Task</a>
+</div>
+
+<div class="task-list" id="task-list">
+    <div class="empty-state" id="loading">
+        <div style="color: #ff9f43;">Loading tasks...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SLOT_ORDER = [10,11,12, 7,8,9, 4,5,6, 1,2,3];
+
+function renderDeckGrid(labware) {
+    let html = '<div class="deck-mini">';
+    SLOT_ORDER.forEach(s => {
+        const key = String(s);
+        const lw = (labware && labware[key]) || "";
+        const isTrash = s === 12;
+        const cls = isTrash ? "slot trash" : (lw ? "slot occupied" : "slot");
+        const label = isTrash ? "Trash" : (lw || "empty");
+        html += `<div class="${cls}"><div class="num">${s}</div><div class="lw">${label}</div></div>`;
+    });
+    html += '</div>';
+    return html;
+}
+
+function renderSteps(steps) {
+    if (!steps || steps.length === 0) return '<div style="color:#667788;">No steps defined.</div>';
+    let html = '<div class="step-preview">';
+    steps.forEach((s, i) => {
+        const kind = s.kind || s.type || "?";
+        const params = s.params || {};
+        let paramStr = "";
+        if (params.slot) paramStr += `slot:${params.slot} `;
+        if (params.well) paramStr += `well:${params.well} `;
+        if (params.volume) paramStr += `${params.volume}uL `;
+        if (params.source_slot) paramStr += `${params.source_slot}→${params.dest_slot || "?"} `;
+        html += `<div class="step-pre-item">
+            <span class="idx">${i + 1}</span>
+            <span>${s.name || kind}</span>
+            <span class="kind-badge">${kind}</span>
+            <span class="params">${paramStr.trim()}</span>
+        </div>`;
+    });
+    html += '</div>';
+    return html;
+}
+
+function renderPipettes(pipettes) {
+    if (!pipettes) return "";
+    let html = '<div style="display:flex; gap:1rem; margin-bottom:0.75rem;">';
+    for (const [mount, name] of Object.entries(pipettes)) {
+        html += `<div style="background:#0d1b2e; padding:0.5rem 0.75rem; border-radius:6px; font-size:0.8rem;">
+            <span style="color:#4ea8ff; font-weight:600;">${mount}</span>: ${name}
+        </div>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+async function loadTasks() {
+    const container = document.getElementById("task-list");
+    try {
+        const resp = await fetch("/api/tasks");
+        if (!resp.ok) throw new Error("Failed to load");
+        const tasks = await resp.json();
+        if (tasks.length === 0) {
+            container.innerHTML = `<div class="empty-state">
+                <div class="icon">&#128194;</div>
+                <div style="font-size:1.1rem; margin-bottom:0.5rem;">No saved tasks yet</div>
+                <div style="margin-bottom:1.5rem;">Create your first task using the wizard.</div>
+                <a href="/generate" class="btn btn-primary" style="text-decoration:none;">Create Task</a>
+            </div>`;
+            return;
+        }
+        let html = "";
+        tasks.forEach(t => {
+            const date = t.created_at ? new Date(t.created_at).toLocaleString() : t.task_id;
+            html += `<div class="task-card" id="card-${t.task_id}">
+                <div class="task-header" onclick="toggleTask('${t.task_id}')">
+                    <div class="task-header-left">
+                        <div class="task-name">${t.name || t.task_id}</div>
+                        <div class="task-meta">${date} &middot; ${t.step_count || 0} steps</div>
+                    </div>
+                    <div class="task-badges">
+                        ${t.has_template ? '<span class="badge badge-running" style="font-size:0.7rem;">Custom UI</span>' : ''}
+                        <span style="color:#667788; font-size:1.2rem;" id="arrow-${t.task_id}">&#9654;</span>
+                    </div>
+                </div>
+                <div class="task-expand" id="expand-${t.task_id}"></div>
+            </div>`;
+        });
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state"><div style="color:#ea5455;">Failed to load tasks: ${e.message}</div></div>`;
+    }
+}
+
+async function toggleTask(taskId) {
+    const expand = document.getElementById("expand-" + taskId);
+    const arrow = document.getElementById("arrow-" + taskId);
+    if (expand.classList.contains("show")) {
+        expand.classList.remove("show");
+        arrow.innerHTML = "&#9654;";
+        return;
+    }
+    // Load details
+    expand.innerHTML = '<div style="color:#ff9f43; padding:1rem;">Loading...</div>';
+    expand.classList.add("show");
+    arrow.innerHTML = "&#9660;";
+
+    try {
+        const resp = await fetch(`/api/tasks/${taskId}`);
+        if (!resp.ok) throw new Error("Failed to load");
+        const data = await resp.json();
+
+        const deck = data.deck || {};
+        const steps = data.steps || [];
+
+        expand.innerHTML = `
+            ${renderPipettes(deck.pipettes)}
+            <div class="detail-grid">
+                <div class="detail-section">
+                    <h3>Deck Layout</h3>
+                    ${renderDeckGrid(deck.labware)}
+                </div>
+                <div class="detail-section">
+                    <h3>Process Steps</h3>
+                    <div class="sim-bar">
+                        <button class="btn btn-primary" style="padding:0.3rem 0.75rem; font-size:0.8rem;" onclick="simulateSteps('${taskId}', ${steps.length})">
+                            &#9654; Simulate
+                        </button>
+                        <span class="sim-counter" id="sim-${taskId}">0 / ${steps.length} steps</span>
+                    </div>
+                    <div id="steps-${taskId}">${renderSteps(steps)}</div>
+                </div>
+            </div>
+            <div class="task-actions">
+                <button class="btn btn-success" onclick="runTask('${taskId}')">&#9654; Run This Task</button>
+                <button class="btn btn-danger" onclick="deleteTask('${taskId}')">Delete</button>
+            </div>`;
+    } catch (e) {
+        expand.innerHTML = `<div style="color:#ea5455; padding:1rem;">Error: ${e.message}</div>`;
+    }
+}
+
+async function simulateSteps(taskId, total) {
+    const counter = document.getElementById("sim-" + taskId);
+    const items = document.querySelectorAll(`#steps-${taskId} .step-pre-item`);
+    // Reset
+    items.forEach(el => el.style.borderLeftColor = "#243b5c");
+    for (let i = 0; i < items.length; i++) {
+        counter.textContent = `${i + 1} / ${total} steps`;
+        items[i].style.borderLeftColor = "#4ea8ff";
+        items[i].style.background = "#1a2d4a";
+        if (i > 0) {
+            items[i - 1].style.borderLeftColor = "#28c76f";
+            items[i - 1].style.background = "#0d1b2e";
+        }
+        await new Promise(r => setTimeout(r, 400));
+    }
+    // Final
+    if (items.length > 0) {
+        items[items.length - 1].style.borderLeftColor = "#28c76f";
+        items[items.length - 1].style.background = "#0d1b2e";
+    }
+    counter.textContent = `${total} / ${total} steps (done)`;
+    showToast("Simulation complete", "success");
+}
+
+async function runTask(taskId) {
+    const data = await apiPost(`/api/tasks/${taskId}/run`, {});
+    if (data && data.run_id) {
+        showToast("Run created! Redirecting...", "success");
+        setTimeout(() => { window.location.href = "/runs/" + data.run_id; }, 600);
+    }
+}
+
+async function deleteTask(taskId) {
+    if (!confirm("Delete this task? This cannot be undone.")) return;
+    try {
+        const resp = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+        if (resp.ok) {
+            document.getElementById("card-" + taskId).remove();
+            showToast("Task deleted", "success");
+        } else {
+            showToast("Delete failed", "error");
+        }
+    } catch (e) {
+        showToast("Delete failed: " + e.message, "error");
+    }
+}
+
+loadTasks();
+</script>
+{% endblock %}

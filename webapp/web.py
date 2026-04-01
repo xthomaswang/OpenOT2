@@ -308,6 +308,298 @@ def create_app(
         })
 
     # ------------------------------------------------------------------
+    # HTML — prompt generator
+    # ------------------------------------------------------------------
+
+    @app.get("/generate", response_class=HTMLResponse)
+    async def generate_page(request: Request):
+        return templates.TemplateResponse(request, "generate.html", {})
+
+    @app.post("/api/task/validate")
+    async def validate_task(body: dict):
+        """Validate user-pasted LLM output: deck YAML, steps JSON, template HTML."""
+        errors = []
+        warnings = []
+
+        # Validate deck YAML
+        deck_yaml = body.get("deck_yaml", "").strip()
+        if deck_yaml:
+            try:
+                import yaml
+                deck_data = yaml.safe_load(deck_yaml)
+                if not isinstance(deck_data, dict):
+                    errors.append({"field": "deck_yaml", "message": "YAML must be a dict"})
+                else:
+                    if "pipettes" not in deck_data and "labware" not in deck_data:
+                        warnings.append({"field": "deck_yaml", "message": "Missing 'pipettes' or 'labware' keys"})
+            except Exception as exc:
+                errors.append({"field": "deck_yaml", "message": f"Invalid YAML: {exc}"})
+        else:
+            errors.append({"field": "deck_yaml", "message": "Deck config is required"})
+
+        # Validate steps JSON
+        steps_json = body.get("steps_json", "").strip()
+        if steps_json:
+            try:
+                import json
+                steps = json.loads(steps_json)
+                if not isinstance(steps, list):
+                    errors.append({"field": "steps_json", "message": "Steps must be a JSON array"})
+                else:
+                    for i, step in enumerate(steps):
+                        if not isinstance(step, dict):
+                            errors.append({"field": "steps_json", "message": f"Step {i} must be a dict"})
+                        elif "kind" not in step and "type" not in step:
+                            errors.append({"field": "steps_json", "message": f"Step {i} missing 'kind' field"})
+                        elif "name" not in step:
+                            warnings.append({"field": "steps_json", "message": f"Step {i} missing 'name' field"})
+            except Exception as exc:
+                errors.append({"field": "steps_json", "message": f"Invalid JSON: {exc}"})
+        else:
+            errors.append({"field": "steps_json", "message": "Steps definition is required"})
+
+        # Validate template HTML (basic check)
+        template_html = body.get("template_html", "").strip()
+        if template_html:
+            if "{% extends" not in template_html and "<html" not in template_html.lower():
+                warnings.append({"field": "template_html", "message": "Template should extend base.html or be valid HTML"})
+
+        return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
+
+    # ------------------------------------------------------------------
+    # JSON API — saved tasks
+    # ------------------------------------------------------------------
+
+    _TASKS_DIR = Path(".config/tasks")
+
+    def _normalize_steps(raw_steps: list) -> list:
+        """Normalize step dicts: support 'type' as alias for 'kind'."""
+        steps = []
+        for s in raw_steps:
+            d = dict(s)
+            if "type" in d and "kind" not in d:
+                d["kind"] = d.pop("type")
+            if "name" not in d:
+                d["name"] = d.get("kind", "step")
+            steps.append(d)
+        return steps
+
+    @app.post("/api/task/apply")
+    async def apply_task(body: dict):
+        """Save task to .config/tasks/{timestamp}_{name}/ and create a run."""
+        import json as _json
+        import re
+        import yaml
+
+        deck_yaml = body.get("deck_yaml", "").strip()
+        steps_json = body.get("steps_json", "").strip()
+        template_html = body.get("template_html", "").strip()
+        run_name = body.get("run_name", "Custom Task").strip() or "Custom Task"
+
+        # Parse
+        try:
+            yaml.safe_load(deck_yaml)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid deck YAML: {exc}")
+        try:
+            raw_steps = _json.loads(steps_json)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid steps JSON: {exc}")
+
+        # Build task directory: {timestamp}_{sanitized_name}
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", run_name.lower()).strip("_")[:40]
+        task_id = f"{ts}_{safe_name}"
+        task_dir = _TASKS_DIR / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save files
+        (task_dir / "deck.yaml").write_text(deck_yaml)
+        normalized = _normalize_steps(raw_steps)
+        (task_dir / "steps.json").write_text(_json.dumps(normalized, indent=2))
+        if template_html:
+            (task_dir / "template.html").write_text(template_html)
+        meta = {
+            "name": run_name,
+            "task_id": task_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "step_count": len(normalized),
+            "has_template": bool(template_html),
+        }
+        (task_dir / "meta.json").write_text(_json.dumps(meta, indent=2))
+
+        # Also save as active deck config
+        active_dir = Path(".config")
+        active_dir.mkdir(exist_ok=True)
+        (active_dir / "deck.yaml").write_text(deck_yaml)
+
+        # Save custom template if provided
+        if template_html:
+            (_TEMPLATES_DIR / "custom_task.html").write_text(template_html)
+
+        # Create run
+        steps = [RunStep(**s) for s in normalized]
+        run = TaskRun(name=run_name, steps=steps)
+        store.create_run(run)
+
+        return {
+            "status": "ok",
+            "task_id": task_id,
+            "run_id": run.id,
+            "steps_count": len(steps),
+        }
+
+    @app.get("/api/tasks")
+    async def list_tasks():
+        """List all saved tasks."""
+        import json as _json
+        tasks = []
+        if _TASKS_DIR.exists():
+            for d in sorted(_TASKS_DIR.iterdir(), reverse=True):
+                meta_path = d / "meta.json"
+                if d.is_dir() and meta_path.exists():
+                    try:
+                        meta = _json.loads(meta_path.read_text())
+                        meta["task_id"] = d.name
+                        tasks.append(meta)
+                    except Exception:
+                        pass
+        return tasks
+
+    @app.get("/api/tasks/{task_id}")
+    async def get_task(task_id: str):
+        """Get full task details: meta, deck, steps."""
+        import json as _json
+        import yaml
+        task_dir = _TASKS_DIR / task_id
+        if not task_dir.exists():
+            raise HTTPException(status_code=404, detail="Task not found")
+        meta = _json.loads((task_dir / "meta.json").read_text())
+        deck_yaml = (task_dir / "deck.yaml").read_text()
+        deck = yaml.safe_load(deck_yaml)
+        steps = _json.loads((task_dir / "steps.json").read_text())
+        template = ""
+        tpl_path = task_dir / "template.html"
+        if tpl_path.exists():
+            template = tpl_path.read_text()
+        return {
+            "meta": meta,
+            "deck": deck,
+            "deck_yaml": deck_yaml,
+            "steps": steps,
+            "template": template,
+        }
+
+    @app.post("/api/tasks/{task_id}/run")
+    async def run_saved_task(task_id: str):
+        """Create a new run from a saved task."""
+        import json as _json
+        task_dir = _TASKS_DIR / task_id
+        if not task_dir.exists():
+            raise HTTPException(status_code=404, detail="Task not found")
+        meta = _json.loads((task_dir / "meta.json").read_text())
+        raw_steps = _json.loads((task_dir / "steps.json").read_text())
+        steps = [RunStep(**s) for s in raw_steps]
+        run = TaskRun(name=meta.get("name", "Saved Task"), steps=steps)
+        store.create_run(run)
+        return {"status": "ok", "run_id": run.id}
+
+    @app.delete("/api/tasks/{task_id}")
+    async def delete_task(task_id: str):
+        """Delete a saved task."""
+        import shutil
+        task_dir = _TASKS_DIR / task_id
+        if not task_dir.exists():
+            raise HTTPException(status_code=404, detail="Task not found")
+        shutil.rmtree(task_dir)
+        return {"status": "ok"}
+
+    @app.get("/tasks", response_class=HTMLResponse)
+    async def tasks_page(request: Request):
+        return templates.TemplateResponse(request, "tasks.html", {})
+
+    @app.get("/api/tasks/{task_id}/calibration-targets")
+    async def get_calibration_targets(task_id: str):
+        """Extract calibration targets from a task in protocol order.
+
+        Walks through steps sequentially, extracts every slot reference,
+        and groups actions by slot.  Slots are ordered by their first
+        appearance in the protocol.  Same-slot actions are merged into
+        one calibration card.
+        """
+        import json as _json
+        import yaml
+
+        task_dir = _TASKS_DIR / task_id
+        if not task_dir.exists():
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        deck = yaml.safe_load((task_dir / "deck.yaml").read_text())
+        steps = _json.loads((task_dir / "steps.json").read_text())
+        labware = deck.get("labware", {})
+
+        # Map: kind → which param keys hold slot references and what action they imply
+        SLOT_PARAMS = {
+            "pick_up_tip":  [("slot", "pick_up_tip")],
+            "drop_tip":     [],  # trash, no labware calibration needed
+            "aspirate":     [("slot", "aspirate")],
+            "dispense":     [("slot", "dispense")],
+            "move":         [("slot", "move")],
+            "blow_out":     [],
+            "home":         [],
+            "use_pipette":  [],
+            "transfer":     [
+                ("tiprack_slot", "pick_up_tip"),
+                ("source_slot", "aspirate"),
+                ("dest_slot", "dispense"),
+                ("cleaning_slot", "rinse"),
+            ],
+            "mix":          [
+                ("tiprack_slot", "pick_up_tip"),
+                ("plate_slot", "aspirate/dispense"),
+                ("cleaning_slot", "rinse"),
+            ],
+        }
+
+        # Walk steps in order, collect slots
+        seen_slots: dict[str, dict] = {}  # slot -> {order, actions, labware_name}
+        order_counter = 0
+
+        for step_idx, step in enumerate(steps):
+            kind = step.get("kind", step.get("type", ""))
+            params = step.get("params", {})
+            slot_refs = SLOT_PARAMS.get(kind, [])
+
+            for param_key, action_type in slot_refs:
+                slot = params.get(param_key)
+                if not slot:
+                    continue
+                slot = str(slot)
+                if slot not in seen_slots:
+                    seen_slots[slot] = {
+                        "slot": slot,
+                        "labware": labware.get(slot, "unknown"),
+                        "actions": set(),
+                        "order": order_counter,
+                        "first_step": step_idx,
+                    }
+                    order_counter += 1
+                seen_slots[slot]["actions"].add(action_type)
+
+        # Build result sorted by protocol order
+        targets = sorted(seen_slots.values(), key=lambda x: x["order"])
+        return [
+            {
+                "slot": t["slot"],
+                "labware": t["labware"],
+                "actions": sorted(t["actions"]),
+                "calibration_well": "A1",
+                "first_step": t["first_step"],
+            }
+            for t in targets
+        ]
+
+    # ------------------------------------------------------------------
     # HTML — hardware setup
     # ------------------------------------------------------------------
 

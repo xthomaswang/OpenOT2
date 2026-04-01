@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenOT2 - Open-Source Web-Controlled Liquid Handling</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0a1628;
+            color: #e0e6ed;
+            line-height: 1.6;
+        }
+        a { color: #4ea8ff; text-decoration: none; }
+        a:hover { color: #7ec8ff; }
+
+        /* Navigation */
+        .top-nav {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            background: rgba(10, 22, 40, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #1a2d4a;
+            z-index: 100;
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+        .nav-logo {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #4ea8ff;
+            letter-spacing: 0.5px;
+        }
+        .nav-logo span { color: #7ec8ff; font-weight: 400; }
+        .nav-links { display: flex; gap: 2rem; align-items: center; }
+        .nav-links a { color: #8899aa; font-size: 0.95rem; transition: color 0.2s; }
+        .nav-links a:hover { color: #e0e6ed; }
+        .nav-links .btn-nav {
+            background: #4ea8ff;
+            color: #fff;
+            padding: 0.45rem 1.1rem;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .nav-links .btn-nav:hover { background: #3d8de0; color: #fff; }
+
+        /* Hero */
+        .hero {
+            padding: 8rem 2rem 4rem;
+            text-align: center;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: #4ea8ff;
+            margin-bottom: 0.5rem;
+        }
+        .hero h1 span { color: #7ec8ff; font-weight: 400; }
+        .hero .tagline {
+            font-size: 1.3rem;
+            color: #8899aa;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .hero-badges {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            margin-bottom: 2.5rem;
+            flex-wrap: wrap;
+        }
+        .hero-badge {
+            display: inline-block;
+            padding: 0.3rem 0.9rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .hero-badge-blue { background: rgba(78, 168, 255, 0.15); color: #4ea8ff; }
+        .hero-badge-green { background: rgba(40, 199, 111, 0.15); color: #28c76f; }
+        .hero-badge-orange { background: rgba(255, 159, 67, 0.15); color: #ff9f43; }
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.75rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #fff;
+            text-decoration: none;
+        }
+        .btn-primary { background: #4ea8ff; }
+        .btn-primary:hover { background: #3d8de0; color: #fff; }
+        .btn-outline {
+            background: transparent;
+            border: 2px solid #243b5c;
+            color: #8899aa;
+        }
+        .btn-outline:hover { border-color: #4ea8ff; color: #e0e6ed; }
+
+        /* Sections */
+        .section {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #e0e6ed;
+        }
+        .section-subtitle {
+            color: #8899aa;
+            font-size: 1rem;
+            margin-bottom: 2.5rem;
+        }
+
+        /* Feature cards */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.25rem;
+        }
+        .card {
+            background: #1a2d4a;
+            border: 1px solid #243b5c;
+            border-radius: 10px;
+            padding: 1.5rem;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .card:hover {
+            border-color: #4ea8ff;
+            transform: translateY(-2px);
+        }
+        .card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+        }
+        .card-icon-blue { background: rgba(78, 168, 255, 0.15); color: #4ea8ff; }
+        .card-icon-green { background: rgba(40, 199, 111, 0.15); color: #28c76f; }
+        .card-icon-orange { background: rgba(255, 159, 67, 0.15); color: #ff9f43; }
+        .card-icon-red { background: rgba(234, 84, 85, 0.15); color: #ea5455; }
+        .card-icon-purple { background: rgba(150, 100, 255, 0.15); color: #9664ff; }
+        .card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            color: #e0e6ed;
+        }
+        .card p {
+            color: #8899aa;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        /* Architecture */
+        .arch-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 768px) { .arch-grid { grid-template-columns: 1fr 1fr; } }
+        .arch-box {
+            background: #0d1b2e;
+            border: 1px solid #243b5c;
+            border-radius: 10px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .arch-box h4 {
+            font-size: 1rem;
+            margin-bottom: 0.35rem;
+        }
+        .arch-box p {
+            color: #667788;
+            font-size: 0.8rem;
+        }
+        .arch-box-blue { border-color: rgba(78, 168, 255, 0.4); }
+        .arch-box-blue h4 { color: #4ea8ff; }
+        .arch-box-green { border-color: rgba(40, 199, 111, 0.4); }
+        .arch-box-green h4 { color: #28c76f; }
+        .arch-box-orange { border-color: rgba(255, 159, 67, 0.4); }
+        .arch-box-orange h4 { color: #ff9f43; }
+        .arch-box-purple { border-color: rgba(150, 100, 255, 0.4); }
+        .arch-box-purple h4 { color: #9664ff; }
+        .arch-connector {
+            text-align: center;
+            color: #3a506b;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            letter-spacing: 2px;
+        }
+        .arch-bottom {
+            background: #0d1b2e;
+            border: 1px solid #243b5c;
+            border-radius: 10px;
+            padding: 1rem;
+            text-align: center;
+            color: #667788;
+            font-size: 0.9rem;
+        }
+        .arch-bottom strong { color: #8899aa; }
+
+        /* Code snippet */
+        .code-block {
+            background: #0a1020;
+            border: 1px solid #243b5c;
+            border-radius: 10px;
+            padding: 1.5rem;
+            overflow-x: auto;
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+            font-size: 0.85rem;
+            line-height: 1.7;
+            color: #c8d0da;
+        }
+        .code-block .comment { color: #546e7a; }
+        .code-block .keyword { color: #c792ea; }
+        .code-block .string { color: #c3e88d; }
+        .code-block .function { color: #82aaff; }
+        .code-block .class { color: #ffcb6b; }
+
+        /* CTA */
+        .cta-section {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(180deg, transparent, rgba(78, 168, 255, 0.05), transparent);
+        }
+        .cta-section h2 {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+        .cta-section p {
+            color: #8899aa;
+            margin-bottom: 2rem;
+            font-size: 1.05rem;
+        }
+
+        /* Footer */
+        .footer {
+            border-top: 1px solid #1a2d4a;
+            padding: 2rem;
+            text-align: center;
+            color: #546e7a;
+            font-size: 0.85rem;
+        }
+        .footer a { color: #4ea8ff; }
+        .footer-links {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="nav-logo">Open<span>OT2</span></div>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#architecture">Architecture</a>
+            <a href="#quickstart">Quick Start</a>
+            <a href="https://github.com/xthomaswang/OpenOT2" target="_blank">GitHub</a>
+            <a href="generate.html" class="btn-nav">Try Prompt Generator</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1>Open<span>OT2</span></h1>
+        <p class="tagline">Open-source web-controlled liquid handling for OT-2 robots</p>
+        <div class="hero-badges">
+            <span class="hero-badge hero-badge-blue">Python</span>
+            <span class="hero-badge hero-badge-green">FastAPI</span>
+            <span class="hero-badge hero-badge-orange">OT-2 Compatible</span>
+        </div>
+        <div class="hero-buttons">
+            <a href="generate.html" class="btn btn-primary">Try Create Task</a>
+            <a href="https://github.com/xthomaswang/OpenOT2" target="_blank" class="btn btn-outline">View on GitHub</a>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="section" id="features">
+        <h2 class="section-title">Features</h2>
+        <p class="section-subtitle">Everything you need to control your OT-2 from the browser.</p>
+        <div class="features-grid">
+            <div class="card">
+                <div class="card-icon card-icon-blue">&#9881;</div>
+                <h3>Robot Control</h3>
+                <p>Full HTTP API client for the OT-2 robot. Create runs, load pipettes and labware, aspirate, dispense, pick up tips, and more -- all programmable through Python or the web UI.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon card-icon-green">&#9673;</div>
+                <h3>Vision System</h3>
+                <p>Integrated USB camera support with computer vision for tip detection and liquid analysis. Monitor experiments visually and extract color data from well plates in real time.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon card-icon-orange">&#9654;</div>
+                <h3>Protocol Execution</h3>
+                <p>Define multi-step protocols with built-in step handlers for common operations. Includes error recovery, pause/resume, and real-time progress tracking for complex workflows.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon card-icon-red">&#9635;</div>
+                <h3>Web Interface</h3>
+                <p>Dark-themed web dashboard with 5-step Create Task wizard, saved task management, real-time run monitor, hardware diagnostics, and protocol-ordered calibration -- all from the browser.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon card-icon-purple">&#10038;</div>
+                <h3>LLM Integration</h3>
+                <p>Describe your experiment in plain English, generate a prompt with full API reference, paste into Claude Opus 4.6, GPT-5.4 Pro, or Gemini 3.1 Pro. Paste back the output, validate, calibrate, and run -- zero coding required.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section class="section" id="architecture">
+        <h2 class="section-title">Architecture</h2>
+        <p class="section-subtitle">Four modular packages that work together seamlessly.</p>
+        <div class="card" style="padding: 2rem;">
+            <div class="arch-grid">
+                <div class="arch-box arch-box-purple">
+                    <h4>webapp</h4>
+                    <p>FastAPI web layer, templates, API endpoints, deck config</p>
+                </div>
+                <div class="arch-box arch-box-orange">
+                    <h4>protocol</h4>
+                    <p>Protocol executor, error recovery, protocol generator</p>
+                </div>
+                <div class="arch-box arch-box-green">
+                    <h4>vision</h4>
+                    <p>USB camera, tip analyzer, liquid analyzer</p>
+                </div>
+                <div class="arch-box arch-box-blue">
+                    <h4>openot2</h4>
+                    <p>OT2Client, OT2Operations, task runner, step models</p>
+                </div>
+            </div>
+            <div class="arch-connector">&#9660; &nbsp; &#9660; &nbsp; &#9660; &nbsp; &#9660;</div>
+            <div class="arch-bottom">
+                <strong>OT-2 Robot</strong> &mdash; Opentrons HTTP API &middot; USB Camera &middot; Deck Slots 1-11
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Start Section -->
+    <section class="section" id="quickstart">
+        <h2 class="section-title">Quick Start</h2>
+        <p class="section-subtitle">Get up and running in minutes.</p>
+        <div class="code-block"><span class="comment"># Clone the repository</span>
+git clone https://github.com/xthomaswang/OpenOT2.git
+cd OpenOT2
+
+<span class="comment"># Install dependencies</span>
+pip install -e .
+
+<span class="comment"># Configure your deck layout</span>
+<span class="comment"># Edit .config/deck.yaml with your labware and pipettes</span>
+
+<span class="comment"># Launch the web interface</span>
+python -m webapp --config .config/deck.yaml --robot <span class="string">192.168.x.x</span>
+
+<span class="comment"># Open http://localhost:8000 in your browser</span>
+<span class="comment"># Use Create Task wizard to build protocols with any LLM</span></div>
+        <div style="margin-top: 1.5rem;">
+            <div class="code-block"><span class="comment"># Or use OpenOT2 programmatically</span>
+<span class="keyword">from</span> openot2 <span class="keyword">import</span> <span class="class">OT2Client</span>, <span class="class">OT2Operations</span>
+
+client = <span class="class">OT2Client</span>(<span class="string">"http://192.168.x.x:31950"</span>)
+client.<span class="function">create_run</span>()
+
+<span class="comment"># Load pipette and labware</span>
+pipette_id = client.<span class="function">load_pipette</span>(<span class="string">"p300_single_gen2"</span>, <span class="string">"left"</span>)
+plate_id = client.<span class="function">load_labware</span>(<span class="string">"corning_96_wellplate_360ul_flat"</span>, <span class="string">"1"</span>)
+tiprack_id = client.<span class="function">load_labware</span>(<span class="string">"opentrons_96_tiprack_300ul"</span>, <span class="string">"10"</span>)
+
+<span class="comment"># High-level operations</span>
+ops = <span class="class">OT2Operations</span>(client)
+ops.<span class="function">transfer</span>(tiprack_id, source_id, plate_id,
+    tip_well=<span class="string">"A1"</span>, source_well=<span class="string">"A1"</span>, dest_well=<span class="string">"A1"</span>, volume=<span class="string">100</span>)</div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <h2>Ready to automate your experiments?</h2>
+        <p>Use the Create Task wizard to describe your experiment, generate a prompt for any LLM, and get a ready-to-run protocol in minutes.</p>
+        <div class="hero-buttons">
+            <a href="generate.html" class="btn btn-primary" style="font-size: 1.1rem; padding: 0.85rem 2rem;">Try Create Task</a>
+            <a href="https://github.com/xthomaswang/OpenOT2" target="_blank" class="btn btn-outline" style="font-size: 1.1rem; padding: 0.85rem 2rem;">Star on GitHub</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-links">
+            <a href="https://github.com/xthomaswang/OpenOT2" target="_blank">GitHub</a>
+            <a href="https://github.com/xthomaswang/OpenOT2/issues" target="_blank">Issues</a>
+            <a href="generate.html">Create Task Demo</a>
+        </div>
+        <p>OpenOT2 is released under the <strong>MIT License</strong>.</p>
+        <p style="margin-top: 0.5rem;">Built for the Opentrons OT-2 open-source liquid handling platform.</p>
+    </footer>
+</body>
+</html>
