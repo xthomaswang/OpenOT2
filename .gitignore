@@ -35,3 +35,6 @@ debug.py
 output/
 test_output/
 run_data/
+
+# Local configuration
+.config/
