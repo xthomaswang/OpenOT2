@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .models import RunEvent, TaskRun
+from .models import RunEvent, RunSequence, TaskRun
 
 
 class JsonRunStore:
@@ -22,8 +22,10 @@ class JsonRunStore:
         self.base_dir = Path(base_dir)
         self._runs_dir = self.base_dir / "runs"
         self._events_dir = self.base_dir / "events"
+        self._sequences_dir = self.base_dir / "sequences"
         self._runs_dir.mkdir(parents=True, exist_ok=True)
         self._events_dir.mkdir(parents=True, exist_ok=True)
+        self._sequences_dir.mkdir(parents=True, exist_ok=True)
 
     # -- runs ---------------------------------------------------------------
 
@@ -74,3 +76,31 @@ class JsonRunStore:
             if line.strip():
                 events.append(RunEvent.model_validate_json(line))
         return events
+
+    # -- sequences ----------------------------------------------------------
+
+    def _sequence_path(self, seq_id: str) -> Path:
+        return self._sequences_dir / f"{seq_id}.json"
+
+    def create_sequence(self, seq: RunSequence) -> RunSequence:
+        """Save a new sequence to disk and return it."""
+        path = self._sequence_path(seq.id)
+        path.write_text(seq.model_dump_json(indent=2), encoding="utf-8")
+        return seq
+
+    def load_sequence(self, seq_id: str) -> RunSequence:
+        """Load a sequence from its JSON file."""
+        path = self._sequence_path(seq_id)
+        return RunSequence.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def save_sequence(self, seq: RunSequence) -> None:
+        """Overwrite an existing sequence file on disk."""
+        path = self._sequence_path(seq.id)
+        path.write_text(seq.model_dump_json(indent=2), encoding="utf-8")
+
+    def list_sequences(self) -> list[RunSequence]:
+        """Load every sequence stored on disk."""
+        sequences: list[RunSequence] = []
+        for path in sorted(self._sequences_dir.glob("*.json")):
+            sequences.append(RunSequence.model_validate_json(path.read_text(encoding="utf-8")))
+        return sequences

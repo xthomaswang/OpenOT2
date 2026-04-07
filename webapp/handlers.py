@@ -41,6 +41,35 @@ class OT2StepHandlers:
     ) -> None:
         self.client = client
         self.ops = ops
+        self.progress_callback = None
+
+    def _emit_progress(
+        self,
+        step: RunStep,
+        context,
+        *,
+        action: str,
+        detail: str,
+        cycle: int | None = None,
+        total_cycles: int | None = None,
+    ) -> None:
+        """Forward live sub-step progress to an external observer."""
+        if not self.progress_callback:
+            return
+        run_id = context.get("run_id") if isinstance(context, dict) else None
+        payload = {
+            "run_id": run_id,
+            "step_id": step.id,
+            "step_name": step.name,
+            "step_kind": step.kind,
+            "action": action,
+            "detail": detail,
+        }
+        if cycle is not None:
+            payload["cycle"] = cycle
+        if total_cycles is not None:
+            payload["total_cycles"] = total_cycles
+        self.progress_callback(payload)
 
     # ------------------------------------------------------------------
     # Bulk registration
@@ -73,6 +102,7 @@ class OT2StepHandlers:
     # ------------------------------------------------------------------
 
     def handle_home(self, step: RunStep, context=None) -> dict:
+        self._emit_progress(step, context, action="home", detail="homing robot")
         if self.client:
             self.client.home()
         return {"action": "home"}
@@ -138,6 +168,7 @@ class OT2StepHandlers:
         if not self.client:
             return {"skipped": True, "reason": "no client"}
         mount = step.params["mount"]
+        self._emit_progress(step, context, action="use_pipette", detail=f"mount={mount}")
         self.client.use_pipette(mount)
         return {"active_pipette": mount}
 
@@ -164,6 +195,16 @@ class OT2StepHandlers:
                 else None
             ),
             rinse_col=p.get("rinse_well"),
+            rinse_cycles=p.get("rinse_cycles"),
+            rinse_volume=p.get("rinse_volume"),
+            progress_callback=lambda payload: self._emit_progress(
+                step,
+                context,
+                action=payload["action"],
+                detail=payload["detail"],
+                cycle=payload.get("cycle"),
+                total_cycles=payload.get("total_cycles"),
+            ),
         )
         return {"transferred": p["volume"], "to": p.get("dest_well")}
 
@@ -185,6 +226,16 @@ class OT2StepHandlers:
                 else None
             ),
             rinse_col=p.get("rinse_well"),
+            rinse_cycles=p.get("rinse_cycles"),
+            rinse_volume=p.get("rinse_volume"),
+            progress_callback=lambda payload: self._emit_progress(
+                step,
+                context,
+                action=payload["action"],
+                detail=payload["detail"],
+                cycle=payload.get("cycle"),
+                total_cycles=payload.get("total_cycles"),
+            ),
         )
         return {"mixed": p.get("mix_well"), "cycles": p.get("cycles", 3)}
 
@@ -218,6 +269,9 @@ class OT2StepHandlers:
         label = p.get("label", "capture")
 
         try:
+            self._emit_progress(
+                step, context, action="capture", detail=f"camera {camera_id}"
+            )
             from vision.camera import USBCamera
             import cv2
 
@@ -333,6 +387,7 @@ class OT2StepHandlers:
         import time
 
         seconds = step.params.get("seconds", 1)
+        self._emit_progress(step, context, action="wait", detail=f"{seconds:.1f}s")
         logger.info("Waiting %.1f seconds...", seconds)
         time.sleep(seconds)
         return {"waited": seconds}

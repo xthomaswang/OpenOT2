@@ -80,7 +80,20 @@ class TaskRun(BaseModel):
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    sequence_id: Optional[str] = None
     eta_seconds: Optional[float] = None
+
+
+class RunSequence(BaseModel):
+    """A logical grouping of related :class:`TaskRun` instances."""
+
+    id: str = Field(default_factory=_uuid)
+    name: str
+    status: str = "pending"  # pending, running, completed, failed, paused
+    run_ids: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class RunEvent(BaseModel):

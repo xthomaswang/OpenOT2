@@ -22,12 +22,13 @@
     .check-detail { font-size: 0.8rem; color: #8899aa; margin-top: 0.2rem; }
     .cam-card {
         background: #0d1b2e; border: 1px solid #243b5c; border-radius: 8px;
-        padding: 1rem; margin-bottom: 0.75rem;
+        padding: 0.75rem;
     }
-    .cam-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .cam-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .cam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem; }
     .cam-preview {
         background: #000; border-radius: 6px; overflow: hidden; text-align: center;
-        min-height: 120px; display: flex; align-items: center; justify-content: center;
+        min-height: 80px; display: flex; align-items: center; justify-content: center;
     }
     .cam-preview img { max-width: 100%; border-radius: 6px; }
     .cam-preview .placeholder { color: #667788; font-size: 0.85rem; }
@@ -51,78 +52,80 @@
 
 <!-- Quick Precheck -->
 <div class="card hw-section" style="padding: 1.5rem;">
-    <h2>&#9889; Quick Precheck</h2>
+    <h2>Quick Precheck</h2>
     <p style="color: #8899aa; font-size: 0.9rem; margin-bottom: 1rem;">
         Run a full hardware check: robot connectivity + camera scan.
     </p>
     <div class="ip-input-row">
-        <input type="text" id="precheck-ip" placeholder="Robot IP (e.g. 169.254.8.56)" style="max-width: 280px;">
+        <input type="text" id="precheck-ip" value="169.254.8.56" placeholder="Robot IP" style="max-width: 280px;">
         <button class="btn btn-primary" onclick="runFullPrecheck()">Run Precheck</button>
     </div>
     <div id="precheck-result"></div>
 </div>
 
-<div class="hw-grid">
-    <!-- Robot Section -->
-    <div>
-        <div class="card hw-section" style="padding: 1.5rem;">
-            <h2>&#129302; Robot Connection</h2>
+<div class="card hw-section" style="padding: 1.5rem;">
+    <h2>Robot Connection</h2>
 
-            {% if has_client %}
-            <div class="check-item" id="robot-check">
-                <div class="check-icon idle" id="rc-icon">&#8987;</div>
-                <div class="check-body">
-                    <div class="check-title" id="rc-title">Checking connected robot...</div>
-                    <div class="check-detail" id="rc-detail">Using server's --robot connection</div>
-                </div>
-            </div>
-            <button class="btn btn-primary" onclick="checkConnectedRobot()" style="margin-bottom: 1rem;">Check Connection</button>
-            {% else %}
-            <div class="check-item">
-                <div class="check-icon idle">&#9888;</div>
-                <div class="check-body">
-                    <div class="check-title">No robot configured</div>
-                    <div class="check-detail">Start server with <code style="color:#4ea8ff;">--robot &lt;IP&gt;</code> to auto-connect</div>
-                </div>
-            </div>
-            {% endif %}
-
-            <div style="margin-top: 1rem;">
-                <div style="color: #8899aa; font-size: 0.85rem; margin-bottom: 0.5rem;">Test a specific IP:</div>
-                <div class="ip-input-row">
-                    <input type="text" id="robot-ip" placeholder="169.254.8.56">
-                    <button class="btn" style="background: #243b5c;" onclick="checkRobotIP()">Test</button>
-                </div>
-                <div id="ip-check-result"></div>
-            </div>
+    {% if has_client %}
+    <div class="check-item" id="robot-check">
+        <div class="check-icon idle" id="rc-icon">&#8987;</div>
+        <div class="check-body">
+            <div class="check-title" id="rc-title">Checking connected robot...</div>
+            <div class="check-detail" id="rc-detail">Using server's --robot connection</div>
         </div>
     </div>
+    <button class="btn btn-primary" onclick="checkConnectedRobot()" style="margin-bottom: 1rem;">Check Connection</button>
+    {% else %}
+    <div class="check-item">
+        <div class="check-icon idle">&#9888;</div>
+        <div class="check-body">
+            <div class="check-title">No robot configured</div>
+            <div class="check-detail">Use Quick Precheck above to connect</div>
+        </div>
+    </div>
+    {% endif %}
 
-    <!-- Camera Section -->
-    <div>
-        <div class="card hw-section" style="padding: 1.5rem;">
-            <h2>&#128247; Camera Setup</h2>
-            <p style="color: #8899aa; font-size: 0.85rem; margin-bottom: 1rem;">
-                Scan all USB cameras, preview each one, and select the overhead plate camera.
-            </p>
-            <button class="btn btn-primary" onclick="scanAndPreviewAll()" id="scan-btn">Scan & Preview All</button>
-            <div id="camera-list" style="margin-top: 1rem;"></div>
-            <div id="selected-camera" style="margin-top: 1rem; display: none;">
-                <div class="check-item" style="border-color: #28c76f40;">
-                    <div class="check-icon ok">&#10003;</div>
-                    <div class="check-body">
-                        <div class="check-title">Selected: Camera <span id="selected-cam-id">-</span></div>
-                        <div class="check-detail" id="selected-cam-detail"></div>
-                    </div>
+    <div style="margin-top: 1rem;">
+        <div style="color: #8899aa; font-size: 0.85rem; margin-bottom: 0.5rem;">Test a specific IP:</div>
+        <div class="ip-input-row">
+            <input type="text" id="robot-ip" placeholder="169.254.8.56">
+            <button class="btn" style="background: #243b5c;" onclick="checkRobotIP()">Test</button>
+        </div>
+        <div id="ip-check-result"></div>
+    </div>
+</div>
+
+<!-- Camera Section (full width) -->
+<div class="card hw-section" style="padding: 1.5rem;">
+    <h2>Camera Setup</h2>
+    <p style="color: #8899aa; font-size: 0.85rem; margin-bottom: 1rem;">
+        Scan all USB cameras, preview each one, and select the overhead plate camera.
+    </p>
+    <button class="btn btn-primary" onclick="scanAndPreviewAll()" id="scan-btn">Scan & Preview All</button>
+    <div id="camera-list" style="margin-top: 1rem;"></div>
+    <div id="selected-camera" style="margin-top: 1rem; display: none;">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="check-item" style="border-color: #28c76f40; flex: 1; margin-bottom: 0;">
+                <div class="check-icon ok">&#10003;</div>
+                <div class="check-body">
+                    <div class="check-title">Selected: Camera <span id="selected-cam-id">-</span></div>
+                    <div class="check-detail" id="selected-cam-detail"></div>
                 </div>
             </div>
+            <button class="btn btn-primary" onclick="toggleLiveView()" id="live-btn">Show Live View</button>
+        </div>
+    </div>
+    <div id="live-view-container" style="margin-top: 1rem; display: none;">
+        <div class="cam-preview" style="position: relative; max-width: 960px;">
+            <img id="live-frame" style="width: 100%;">
+            <div id="live-fps" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.6); color:#28c76f; padding:2px 8px; border-radius:4px; font-size:0.8rem;"></div>
         </div>
     </div>
 </div>
 
 <!-- Calibration Section -->
 <div class="card hw-section" style="padding: 1.5rem;">
-    <h2 style="font-size: 1.2rem; margin-bottom: 0.5rem;">&#8982; Robot Calibration</h2>
+    <h2 style="font-size: 1.2rem; margin-bottom: 0.5rem;">Robot Calibration</h2>
     <p style="color: #8899aa; font-size: 0.9rem; margin-bottom: 1rem;">
         Tune pipette offsets and test aspirate/dispense positions. Load or create a calibration profile, then nudge offsets until the pipette is perfectly aligned.
     </p>
@@ -189,8 +192,8 @@
 
         showToast(scanData.cameras.length + " camera(s) found, capturing previews...", "info");
 
-        // Step 2: Build cards with loading state
-        let html = "";
+        // Step 2: Build cards in a grid layout
+        let html = '<div class="cam-grid">';
         scanData.cameras.forEach(cam => {
             html += `
                 <div class="cam-card" id="cam-${cam.device_id}" style="cursor:pointer;" onclick="selectCamera(${cam.device_id}, ${cam.width}, ${cam.height})">
@@ -199,13 +202,14 @@
                             <span style="font-weight:600;">Camera ${cam.device_id}</span>
                             <span style="color:#8899aa; font-size:0.8rem; margin-left:0.5rem;">${cam.width}x${cam.height}</span>
                         </div>
-                        <button class="btn" style="background:#243b5c; padding:0.3rem 0.75rem; font-size:0.8rem;" onclick="event.stopPropagation(); selectCamera(${cam.device_id}, ${cam.width}, ${cam.height})">Select This Camera</button>
+                        <button class="btn" style="background:#243b5c; padding:0.3rem 0.75rem; font-size:0.8rem;" onclick="event.stopPropagation(); selectCamera(${cam.device_id}, ${cam.width}, ${cam.height})">Select</button>
                     </div>
                     <div class="cam-preview" id="preview-${cam.device_id}">
-                        <div class="placeholder" style="color:#ff9f43;">Capturing preview...</div>
+                        <div class="placeholder" style="color:#ff9f43;">Capturing...</div>
                     </div>
                 </div>`;
         });
+        html += '</div>';
         container.innerHTML = html;
 
         // Step 3: Capture from each camera sequentially (cameras can't be opened simultaneously)
@@ -227,7 +231,11 @@
         showToast("All previews captured. Click a camera to select it.", "success");
     }
 
-    function selectCamera(deviceId, width, height) {
+    let liveRunning = false;
+
+    async function selectCamera(deviceId, width, height) {
+        // Stop live view if switching cameras
+        if (liveRunning) { stopLiveView(); }
         // Deselect previous
         document.querySelectorAll(".cam-card").forEach(c => c.style.borderColor = "#243b5c");
         // Highlight selected
@@ -237,8 +245,62 @@
         // Show selection
         document.getElementById("selected-camera").style.display = "block";
         document.getElementById("selected-cam-id").textContent = deviceId;
-        document.getElementById("selected-cam-detail").textContent = width + "x" + height + " — Use device_id: " + deviceId + " in your config";
-        showToast("Camera " + deviceId + " selected as plate camera", "success");
+        document.getElementById("selected-cam-detail").textContent = width + "x" + height;
+        // Save selection on server (silent — no error toast on failure)
+        fetch("/api/hardware/select-camera", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ device_id: deviceId, width, height }),
+        }).catch(() => {});
+        showToast("Camera " + deviceId + " selected", "success");
+    }
+
+    function toggleLiveView() {
+        if (liveRunning) {
+            stopLiveView();
+        } else {
+            startLiveView();
+        }
+    }
+
+    function startLiveView() {
+        if (selectedCameraId === null) { showToast("Select a camera first", "warning"); return; }
+        const btn = document.getElementById("live-btn");
+        const container = document.getElementById("live-view-container");
+        btn.textContent = "Stop Live View";
+        container.style.display = "block";
+        liveRunning = true;
+        let lastTime = performance.now();
+
+        async function loop() {
+            if (!liveRunning) return;
+            try {
+                const resp = await fetch("/api/hardware/live-frame", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ device_id: selectedCameraId }),
+                });
+                const data = await resp.json();
+                if (data && data.ok) {
+                    document.getElementById("live-frame").src = "data:image/jpeg;base64," + data.image;
+                    const now = performance.now();
+                    const fps = (1000 / (now - lastTime)).toFixed(1);
+                    lastTime = now;
+                    document.getElementById("live-fps").textContent = fps + " fps";
+                }
+            } catch (e) { /* ignore transient errors */ }
+            if (liveRunning) requestAnimationFrame(() => loop());
+        }
+        loop();
+    }
+
+    function stopLiveView() {
+        liveRunning = false;
+        document.getElementById("live-btn").textContent = "Show Live View";
+        document.getElementById("live-view-container").style.display = "none";
+        document.getElementById("live-fps").textContent = "";
+        // Release the camera on the server
+        fetch("/api/hardware/live-stop", { method: "POST" }).catch(() => {});
     }
 
     async function runFullPrecheck() {
@@ -270,7 +332,28 @@
                 </div>
             </div>`;
         showToast(allOk ? "All hardware checks passed" : "Some checks failed", allOk ? "success" : "warning");
+
+        // Auto-connect if robot is reachable
+        if (robotOk) {
+            const connData = await apiPost("/api/hardware/connect", { ip: ip || "169.254.8.56" });
+            if (connData && connData.connected) {
+                showToast("Robot connected: " + (connData.name || connData.ip), "success");
+                pollRobotStatus();
+            }
+        }
     }
+
+    // Restore selected camera from server state
+    (async function restoreCamera() {
+        const data = await fetch("/api/hardware/selected-camera").then(r => r.json());
+        if (data && data.selected) {
+            const cam = data.selected;
+            selectedCameraId = cam.device_id;
+            document.getElementById("selected-camera").style.display = "block";
+            document.getElementById("selected-cam-id").textContent = cam.device_id;
+            document.getElementById("selected-cam-detail").textContent = cam.width + "x" + cam.height;
+        }
+    })();
 
     // Auto-check robot if connected
     {% if has_client %}

@@ -33,7 +33,7 @@ from webapp.calibration import (
     test_aspirate,
     test_dispense,
 )
-from openot2.control.models import RunStatus, RunStep, TaskRun
+from openot2.control.models import RunSequence, RunStatus, RunStep, TaskRun
 from openot2.control.runner import TaskRunner
 from openot2.control.store import JsonRunStore
 
@@ -91,6 +91,20 @@ class CreateProfileRequest(BaseModel):
     targets: list[dict[str, Any]]
 
 
+class CreateSequenceRequest(BaseModel):
+    """Body for POST /api/sequences."""
+
+    name: str
+    metadata: dict[str, Any] = {}
+
+
+class AddSequenceRunRequest(BaseModel):
+    """Body for POST /api/sequences/{seq_id}/runs."""
+
+    name: str
+    steps: list[dict[str, Any]]
+
+
 # ---------------------------------------------------------------------------
 # Template directory (sibling of this file)
 # ---------------------------------------------------------------------------
@@ -106,6 +120,7 @@ def create_app(
     store: JsonRunStore,
     runner: TaskRunner,
     client: Any | None = None,
+    nav_links: list[dict] | None = None,
 ) -> FastAPI:
     """Create a :class:`FastAPI` application wired to the given store and runner.
 
@@ -118,6 +133,9 @@ def create_app(
     client:
         Optional :class:`OT2Client` for calibration endpoints.  When
         ``None``, calibration preview / test endpoints return 503.
+    nav_links:
+        Optional list of extra navigation links for the sidebar.
+        Each dict should have ``title``, ``path``, and optionally ``icon``.
     """
     app = FastAPI(title="OpenOT2 Control")
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -126,6 +144,7 @@ def create_app(
     app.state.store = store
     app.state.runner = runner
     app.state.client = client
+    app.state.selected_camera = None  # {"device_id": int, "width": int, "height": int}
     app.state.active_runs: set[str] = set()
     app.state.calibration_session: CalibrationSession | None = None
     app.state.calibration_profile: CalibrationProfile | None = None
@@ -137,7 +156,7 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     async def index_page(request: Request):
         runs = store.list_runs()
-        return templates.TemplateResponse(request, "index.html", {"runs": runs})
+        return templates.TemplateResponse(request, "index.html", {"runs": runs, "extra_nav": nav_links})
 
     @app.get("/runs/{run_id}", response_class=HTMLResponse)
     async def run_detail_page(request: Request, run_id: str):
@@ -147,7 +166,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="Run not found")
         events = store.list_events(run_id)
         return templates.TemplateResponse(
-            request, "run_detail.html", {"run": run, "events": events},
+            request, "run_detail.html", {"run": run, "events": events, "extra_nav": nav_links},
         )
 
     @app.get("/calibration", response_class=HTMLResponse)
@@ -160,7 +179,8 @@ def create_app(
             {
                 "profile": profile,
                 "session": session,
-                "has_client": client is not None,
+                "has_client": app.state.client is not None,
+                "extra_nav": nav_links,
             },
         )
 
@@ -279,22 +299,72 @@ def create_app(
         return {"status": "aborted", "run_id": run_id}
 
     # ------------------------------------------------------------------
+    # JSON API — sequences
+    # ------------------------------------------------------------------
+
+    @app.post("/api/sequences")
+    async def create_sequence(body: CreateSequenceRequest):
+        """Create a new run sequence."""
+        seq = RunSequence(name=body.name, metadata=body.metadata)
+        store.create_sequence(seq)
+        return seq.model_dump(mode="json")
+
+    @app.get("/api/sequences")
+    async def list_sequences():
+        """Return all sequences as a JSON array."""
+        seqs = store.list_sequences()
+        return [s.model_dump(mode="json") for s in seqs]
+
+    @app.get("/api/sequences/{seq_id}")
+    async def get_sequence(seq_id: str):
+        """Return a sequence with its full runs."""
+        try:
+            seq = store.load_sequence(seq_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Sequence not found")
+        runs = []
+        for run_id in seq.run_ids:
+            try:
+                runs.append(store.load_run(run_id).model_dump(mode="json"))
+            except FileNotFoundError:
+                pass
+        data = seq.model_dump(mode="json")
+        data["runs"] = runs
+        return data
+
+    @app.post("/api/sequences/{seq_id}/runs")
+    async def add_run_to_sequence(seq_id: str, body: AddSequenceRunRequest):
+        """Create a run and add it to a sequence."""
+        try:
+            seq = store.load_sequence(seq_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Sequence not found")
+        steps = [RunStep(**s) for s in body.steps]
+        run = TaskRun(name=body.name, steps=steps, sequence_id=seq_id)
+        store.create_run(run)
+        seq.run_ids.append(run.id)
+        seq.updated_at = datetime.now(timezone.utc)
+        store.save_sequence(seq)
+        return run.model_dump(mode="json")
+
+    # ------------------------------------------------------------------
     # JSON API — system status
     # ------------------------------------------------------------------
 
     @app.get("/api/status")
     async def get_status():
         """Return system status: robot connection, loaded labware, etc."""
-        result: dict[str, Any] = {"robot_connected": client is not None}
-        if client:
+        c = app.state.client
+        result: dict[str, Any] = {"robot_connected": c is not None}
+        if c:
             try:
-                health = client.health(timeout=5)
+                health = c.health(timeout=5)
                 result["robot_name"] = health.get("name", "OT-2")
                 result["robot_healthy"] = True
             except Exception:
                 result["robot_healthy"] = False
-            result["labware_slots"] = dict(client.labware_by_slot) if client.labware_by_slot else {}
-            result["active_pipette"] = getattr(client, '_pipette_id', None)
+            result["labware_slots"] = dict(c.labware_by_slot) if c.labware_by_slot else {}
+            result["active_pipette"] = getattr(c, '_pipette_id', None)
         return result
 
     # ------------------------------------------------------------------
@@ -304,7 +374,8 @@ def create_app(
     @app.get("/setup", response_class=HTMLResponse)
     async def setup_page(request: Request):
         return templates.TemplateResponse(request, "setup.html", {
-            "has_client": client is not None,
+            "has_client": app.state.client is not None,
+            "extra_nav": nav_links,
         })
 
     # ------------------------------------------------------------------
@@ -313,7 +384,7 @@ def create_app(
 
     @app.get("/generate", response_class=HTMLResponse)
     async def generate_page(request: Request):
-        return templates.TemplateResponse(request, "generate.html", {})
+        return templates.TemplateResponse(request, "generate.html", {"extra_nav": nav_links})
 
     @app.post("/api/task/validate")
     async def validate_task(body: dict):
@@ -516,7 +587,7 @@ def create_app(
 
     @app.get("/tasks", response_class=HTMLResponse)
     async def tasks_page(request: Request):
-        return templates.TemplateResponse(request, "tasks.html", {})
+        return templates.TemplateResponse(request, "tasks.html", {"extra_nav": nav_links})
 
     @app.get("/api/tasks/{task_id}/calibration-targets")
     async def get_calibration_targets(task_id: str):
@@ -606,7 +677,8 @@ def create_app(
     @app.get("/hardware", response_class=HTMLResponse)
     async def hardware_page(request: Request):
         return templates.TemplateResponse(request, "hardware.html", {
-            "has_client": client is not None,
+            "has_client": app.state.client is not None,
+            "extra_nav": nav_links,
         })
 
     # ------------------------------------------------------------------
@@ -616,9 +688,10 @@ def create_app(
     @app.post("/api/hardware/check-robot")
     async def check_robot():
         """Check robot connectivity. Uses the connected client if available."""
-        if client is not None:
+        c = app.state.client
+        if c is not None:
             try:
-                health = client.health(timeout=5)
+                health = c.health(timeout=5)
                 return {
                     "reachable": True,
                     "name": health.get("name", ""),
@@ -626,7 +699,7 @@ def create_app(
                 }
             except Exception as exc:
                 return {"reachable": False, "error": str(exc)}
-        return {"reachable": False, "error": "No robot configured. Start with --robot <IP>"}
+        return {"reachable": False, "error": "No robot configured. Use Hardware page to connect."}
 
     @app.post("/api/hardware/check-robot-ip")
     async def check_robot_ip(body: dict):
@@ -691,10 +764,12 @@ def create_app(
     async def full_precheck(body: dict):
         """Run full precheck (robot + cameras)."""
         ip = body.get("ip", "").strip()
-        if not ip and client is not None:
-            ip = getattr(client, '_base_url', '').replace('http://', '').split(':')[0]
+        if not ip and app.state.client is not None:
+            ip = getattr(app.state.client, '_base_url', '').replace('http://', '').split(':')[0]
+        if not ip:
+            ip = "169.254.8.56"
         from openot2.precheck import check_robot_connection, probe_cameras
-        robot = {"reachable": False, "error": "No IP provided"} if not ip else None
+        robot = None
         if ip:
             status = check_robot_connection(ip, timeout=5.0)
             robot = {
@@ -710,17 +785,111 @@ def create_app(
             cam_list = []
         return {"robot": robot, "cameras": cam_list}
 
+    @app.post("/api/hardware/connect")
+    async def connect_robot(body: dict):
+        """Connect to a robot by IP and remember the connection."""
+        ip = body.get("ip", "").strip()
+        if not ip:
+            ip = "169.254.8.56"
+        from openot2.client import OT2Client
+        try:
+            c = OT2Client(ip, timeout=30)
+            health = c.health(timeout=10)
+            app.state.client = c
+            return {
+                "connected": True,
+                "name": health.get("name", ""),
+                "api_version": health.get("api_version", ""),
+                "ip": ip,
+            }
+        except Exception as exc:
+            return {"connected": False, "error": str(exc)}
+
+    @app.post("/api/hardware/select-camera")
+    async def select_camera(body: dict):
+        """Remember the selected camera for this session."""
+        # Stop any existing live camera first
+        _stop_live_camera()
+        app.state.selected_camera = {
+            "device_id": body.get("device_id", 0),
+            "width": body.get("width", 1920),
+            "height": body.get("height", 1080),
+        }
+        return {"ok": True, "selected": app.state.selected_camera}
+
+    @app.get("/api/hardware/selected-camera")
+    async def get_selected_camera():
+        """Return the currently selected camera, if any."""
+        return {"selected": app.state.selected_camera}
+
+    # Live camera support — keep camera open between frames
+    app.state._live_camera = None
+    app.state._live_camera_id = None
+
+    def _stop_live_camera():
+        if app.state._live_camera is not None:
+            try:
+                app.state._live_camera.release()
+            except Exception:
+                pass
+            app.state._live_camera = None
+            app.state._live_camera_id = None
+
+    @app.post("/api/hardware/live-frame")
+    async def live_frame(body: dict):
+        """Grab a frame from the kept-open camera. Much faster than test-camera."""
+        import base64
+        device_id = body.get("device_id", 0)
+        try:
+            import cv2
+            from vision.camera import USBCamera
+            # Open camera if not already open or if device changed
+            if app.state._live_camera is None or app.state._live_camera_id != device_id:
+                _stop_live_camera()
+                cam = USBCamera(
+                    camera_id=device_id,
+                    width=body.get("width", 1920),
+                    height=body.get("height", 1080),
+                    warmup_frames=5,
+                )
+                # Do initial warmup capture
+                cam.capture()
+                app.state._live_camera = cam
+                app.state._live_camera_id = device_id
+
+            cap = app.state._live_camera._cap
+            if cap is None or not cap.isOpened():
+                _stop_live_camera()
+                return {"ok": False, "error": "Camera lost"}
+
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                return {"ok": False, "error": "Failed to read frame"}
+
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+            return {"ok": True, "image": b64, "width": frame.shape[1], "height": frame.shape[0]}
+        except Exception as exc:
+            _stop_live_camera()
+            return {"ok": False, "error": str(exc)}
+
+    @app.post("/api/hardware/live-stop")
+    async def live_stop():
+        """Release the live camera."""
+        _stop_live_camera()
+        return {"ok": True}
+
     # ------------------------------------------------------------------
     # JSON API — calibration
     # ------------------------------------------------------------------
 
     def _require_client():
-        if client is None:
+        if app.state.client is None:
             raise HTTPException(
                 status_code=503,
                 detail="No OT2Client configured — calibration actions require a connected robot",
             )
-        return client
+        return app.state.client
 
     def _require_profile() -> CalibrationProfile:
         p = app.state.calibration_profile

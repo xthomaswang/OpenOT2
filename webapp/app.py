@@ -26,6 +26,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
+from fastapi import FastAPI
 from openot2.client import OT2Client
 from openot2.control.runner import TaskRunner
 from openot2.control.store import JsonRunStore
@@ -90,6 +91,10 @@ class WebApp:
         self.handlers = OT2StepHandlers(client=self.client, ops=self.ops)
         self.handlers.register_all(self.runner)
 
+        # Extension points
+        self._sub_apps: list[tuple[str, FastAPI]] = []
+        self._nav_links: list[dict] = []
+
     # ------------------------------------------------------------------
     # Alternative constructors
     # ------------------------------------------------------------------
@@ -121,17 +126,29 @@ class WebApp:
         """
         self.runner.register_handler(kind, handler)
 
+    def mount_app(self, path: str, app: "FastAPI") -> None:
+        """Register a FastAPI sub-application to be mounted at *path*."""
+        self._sub_apps.append((path, app))
+
+    def add_nav_link(self, title: str, path: str, icon: str = "&#9671;") -> None:
+        """Add a navigation link to the sidebar."""
+        self._nav_links.append({"title": title, "path": path, "icon": icon})
+
     # ------------------------------------------------------------------
     # Serve
     # ------------------------------------------------------------------
 
     def create_fastapi_app(self):
         """Build and return the :class:`FastAPI` application."""
-        return create_app(
+        app = create_app(
             store=self.store,
             runner=self.runner,
             client=self.client,
+            nav_links=self._nav_links or None,
         )
+        for path, sub in self._sub_apps:
+            app.mount(path, sub)
+        return app
 
     def run(self, host: str = "0.0.0.0", port: int = 8000) -> None:
         """Start the web server (blocking)."""

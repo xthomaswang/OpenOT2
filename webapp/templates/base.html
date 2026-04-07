@@ -262,6 +262,14 @@
                 <span class="icon">&#9881;</span>
                 <span>Hardware</span>
             </a>
+            {% if extra_nav %}
+            {% for link in extra_nav %}
+            <a href="{{ link.path }}">
+                <span class="icon">{{ link.icon | safe }}</span>
+                <span>{{ link.title }}</span>
+            </a>
+            {% endfor %}
+            {% endif %}
         </nav>
         <div class="sidebar-status" onclick="toggleRobotDetail()" style="cursor:pointer;">
             <span class="status-dot disconnected" id="robot-dot"></span>

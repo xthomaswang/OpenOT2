@@ -29,11 +29,13 @@ Example::
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 from openot2.client import OT2Client
 
 logger = logging.getLogger("openot2.operations")
+
+ProgressCallback = Callable[[dict], None]
 
 
 class OT2Operations:
@@ -55,6 +57,25 @@ class OT2Operations:
         self.rinse_cycles = rinse_cycles
         self.rinse_volume = rinse_volume
 
+    def _emit_progress(
+        self,
+        progress_callback: Optional[ProgressCallback],
+        *,
+        action: str,
+        detail: str,
+        cycle: Optional[int] = None,
+        total_cycles: Optional[int] = None,
+    ) -> None:
+        """Emit a sub-step progress update when a callback is configured."""
+        if not progress_callback:
+            return
+        payload = {"action": action, "detail": detail}
+        if cycle is not None:
+            payload["cycle"] = cycle
+        if total_cycles is not None:
+            payload["total_cycles"] = total_cycles
+        progress_callback(payload)
+
     # ------------------------------------------------------------------
     # Core operations
     # ------------------------------------------------------------------
@@ -74,6 +95,7 @@ class OT2Operations:
         rinse_volume: Optional[float] = None,
         blow_out: bool = True,
         return_tip: bool = True,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> None:
         """Pick up tip → aspirate → dispense → optional rinse → return tip.
 
@@ -97,20 +119,46 @@ class OT2Operations:
             source_well, dest_well, volume, tip_well,
         )
 
+        self._emit_progress(
+            progress_callback,
+            action="pick_up_tip",
+            detail=f"tip {tip_well}",
+        )
         self.client.pick_up_tip(tiprack_id, tip_well)
+        self._emit_progress(
+            progress_callback,
+            action="aspirate",
+            detail=f"{source_well} ({volume:.1f}uL)",
+        )
         self.client.aspirate(volume, source_id, source_well)
+        self._emit_progress(
+            progress_callback,
+            action="dispense",
+            detail=f"{dest_well} ({volume:.1f}uL)",
+        )
         self.client.dispense(volume, dest_id, dest_well)
 
         if blow_out:
+            self._emit_progress(
+                progress_callback,
+                action="blow_out",
+                detail=dest_well,
+            )
             self.client.blow_out(dest_id, dest_well)
 
         if cleaning_id and rinse_col:
             self.rinse(
                 cleaning_id, rinse_col,
                 cycles=rinse_cycles, volume=rinse_volume,
+                progress_callback=progress_callback,
             )
 
         if return_tip:
+            self._emit_progress(
+                progress_callback,
+                action="drop_tip",
+                detail=f"tip {tip_well}",
+            )
             self.client.drop_tip(tiprack_id, tip_well)
 
     def mix(
@@ -126,6 +174,7 @@ class OT2Operations:
         rinse_cycles: Optional[int] = None,
         rinse_volume: Optional[float] = None,
         return_tip: bool = True,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> None:
         """Pick up tip → aspirate/dispense cycles → optional rinse → return tip.
 
@@ -147,21 +196,51 @@ class OT2Operations:
             mix_well, cycles, volume, tip_well,
         )
 
+        self._emit_progress(
+            progress_callback,
+            action="pick_up_tip",
+            detail=f"tip {tip_well}",
+        )
         self.client.pick_up_tip(tiprack_id, tip_well)
 
-        for _ in range(cycles):
+        for idx in range(cycles):
+            self._emit_progress(
+                progress_callback,
+                action="mix_aspirate",
+                detail=f"{mix_well} ({volume:.1f}uL)",
+                cycle=idx + 1,
+                total_cycles=cycles,
+            )
             self.client.aspirate(volume, labware_id, mix_well)
+            self._emit_progress(
+                progress_callback,
+                action="mix_dispense",
+                detail=f"{mix_well} ({volume:.1f}uL)",
+                cycle=idx + 1,
+                total_cycles=cycles,
+            )
             self.client.dispense(volume, labware_id, mix_well)
 
+        self._emit_progress(
+            progress_callback,
+            action="blow_out",
+            detail=mix_well,
+        )
         self.client.blow_out(labware_id, mix_well)
 
         if cleaning_id and rinse_col:
             self.rinse(
                 cleaning_id, rinse_col,
                 cycles=rinse_cycles, volume=rinse_volume,
+                progress_callback=progress_callback,
             )
 
         if return_tip:
+            self._emit_progress(
+                progress_callback,
+                action="drop_tip",
+                detail=f"tip {tip_well}",
+            )
             self.client.drop_tip(tiprack_id, tip_well)
 
     def rinse(
@@ -170,6 +249,7 @@ class OT2Operations:
         well: str,
         cycles: Optional[int] = None,
         volume: Optional[float] = None,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> None:
         """Rinse the current tip(s) in a cleaning reservoir.
 
@@ -187,7 +267,26 @@ class OT2Operations:
 
         logger.info("rinse: %s x%d (%.1f uL)", well, n, v)
 
-        for _ in range(n):
+        for idx in range(n):
+            self._emit_progress(
+                progress_callback,
+                action="rinse_aspirate",
+                detail=f"{well} ({v:.1f}uL)",
+                cycle=idx + 1,
+                total_cycles=n,
+            )
             self.client.aspirate(v, cleaning_id, well)
+            self._emit_progress(
+                progress_callback,
+                action="rinse_dispense",
+                detail=f"{well} ({v:.1f}uL)",
+                cycle=idx + 1,
+                total_cycles=n,
+            )
             self.client.dispense(v, cleaning_id, well)
+        self._emit_progress(
+            progress_callback,
+            action="blow_out",
+            detail=well,
+        )
         self.client.blow_out(cleaning_id, well)
