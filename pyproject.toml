@@ -31,7 +31,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["openot2", "vision", "protocol", "webapp"]
+packages = ["openot2"]
 
 [tool.pytest.ini_options]
 markers = [

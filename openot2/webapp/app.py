@@ -2,21 +2,28 @@
 
 Typical usage::
 
-    from webapp import WebApp
+    from openot2.webapp import WebApp
 
     app = WebApp.from_yaml("deck.yaml", robot_ip="169.254.8.56")
     app.run(port=8000)
 
 Or programmatically::
 
-    from webapp import WebApp
-    from webapp.deck import DeckConfig
+    from openot2.webapp import WebApp
+    from openot2.webapp.deck import DeckConfig
 
     deck = DeckConfig(
         pipettes={"left": "p300_single_gen2"},
         labware={"1": "corning_96_wellplate_360ul_flat"},
     )
     app = WebApp(deck=deck)
+    app.run()
+
+With a task plugin::
+
+    from openot2.webapp import WebApp
+
+    app = WebApp(plugin=my_plugin, config_path="experiment.yaml")
     app.run()
 """
 
@@ -30,10 +37,10 @@ from fastapi import FastAPI
 from openot2.client import OT2Client
 from openot2.control.runner import TaskRunner
 from openot2.control.store import JsonRunStore
-from webapp.web import create_app
+from openot2.webapp.web import create_app
 from openot2.operations import OT2Operations
-from webapp.deck import DeckConfig
-from webapp.handlers import OT2StepHandlers
+from openot2.webapp.deck import DeckConfig
+from openot2.webapp.handlers import OT2StepHandlers
 
 logger = logging.getLogger("openot2.webapp")
 
@@ -59,6 +66,13 @@ class WebApp:
         Default rinse volume (uL) for :class:`OT2Operations`.
     timeout:
         HTTP timeout in seconds for robot connection.
+    plugin:
+        Optional :class:`~openot2.task_api.plugin.TaskPlugin` instance.
+        When set, the web shell exposes generic task routes that delegate
+        to the plugin for plan, status, run construction, etc.
+    config_path:
+        Path to the task configuration file.  Required when *plugin* is
+        provided.
     """
 
     def __init__(
@@ -70,9 +84,29 @@ class WebApp:
         rinse_cycles: int = 3,
         rinse_volume: float = 250.0,
         timeout: float = 180.0,
+        plugin: Any | None = None,
+        config_path: str | Path | None = None,
     ) -> None:
         self.deck = deck
         self.data_dir = Path(data_dir)
+
+        # Plugin support
+        self.plugin = plugin
+        self.config_path = str(config_path) if config_path else None
+        self._task_config: Any = None
+        self._task_state: dict | None = None
+
+        # If plugin provided, load config and derive deck if not explicit
+        if plugin and config_path and deck is None:
+            self._task_config = plugin.load_config(str(config_path))
+            deck_obj = plugin.build_deck_config(self._task_config)
+            if isinstance(deck_obj, DeckConfig):
+                self.deck = deck_obj
+            elif isinstance(deck_obj, dict):
+                self.deck = DeckConfig(
+                    pipettes=deck_obj.get("pipettes", {}),
+                    labware=deck_obj.get("labware", {}),
+                )
 
         # Persistence + runner
         self.store = JsonRunStore(base_dir=self.data_dir)
@@ -94,6 +128,32 @@ class WebApp:
         # Extension points
         self._sub_apps: list[tuple[str, FastAPI]] = []
         self._nav_links: list[dict] = []
+        self.calibration_profile = None
+        self.calibration_session = None
+
+    # ------------------------------------------------------------------
+    # Plugin accessors
+    # ------------------------------------------------------------------
+
+    @property
+    def task_config(self) -> Any:
+        """Return the task config, loading lazily if needed."""
+        if self._task_config is None and self.plugin and self.config_path:
+            self._task_config = self.plugin.load_config(self.config_path)
+        return self._task_config
+
+    @task_config.setter
+    def task_config(self, value: Any) -> None:
+        self._task_config = value
+
+    @property
+    def task_state(self) -> dict | None:
+        """Return the current task state (managed by the task routes)."""
+        return self._task_state
+
+    @task_state.setter
+    def task_state(self, value: dict | None) -> None:
+        self._task_state = value
 
     # ------------------------------------------------------------------
     # Alternative constructors
@@ -134,6 +194,12 @@ class WebApp:
         """Add a navigation link to the sidebar."""
         self._nav_links.append({"title": title, "path": path, "icon": icon})
 
+    def set_calibration_profile(self, profile, session=None) -> None:
+        """Set the calibration profile used by the calibration UI and runtime."""
+        self.calibration_profile = profile
+        self.calibration_session = session
+        self.handlers.set_calibration_profile(profile)
+
     # ------------------------------------------------------------------
     # Serve
     # ------------------------------------------------------------------
@@ -144,7 +210,12 @@ class WebApp:
             store=self.store,
             runner=self.runner,
             client=self.client,
+            initial_calibration_profile=self.calibration_profile,
+            initial_calibration_session=self.calibration_session,
+            calibration_profile_sync=self.handlers.set_calibration_profile,
             nav_links=self._nav_links or None,
+            plugin=self.plugin,
+            webapp=self,
         )
         for path, sub in self._sub_apps:
             app.mount(path, sub)

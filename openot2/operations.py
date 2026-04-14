@@ -90,6 +90,10 @@ class OT2Operations:
         dest_well: str,
         volume: float,
         cleaning_id: Optional[str] = None,
+        tip_offset=None,
+        source_offset=None,
+        dest_offset=None,
+        cleaning_offset=None,
         rinse_col: Optional[str] = None,
         rinse_cycles: Optional[int] = None,
         rinse_volume: Optional[float] = None,
@@ -124,19 +128,19 @@ class OT2Operations:
             action="pick_up_tip",
             detail=f"tip {tip_well}",
         )
-        self.client.pick_up_tip(tiprack_id, tip_well)
+        self.client.pick_up_tip(tiprack_id, tip_well, offset=tip_offset)
         self._emit_progress(
             progress_callback,
             action="aspirate",
             detail=f"{source_well} ({volume:.1f}uL)",
         )
-        self.client.aspirate(volume, source_id, source_well)
+        self.client.aspirate(volume, source_id, source_well, offset=source_offset)
         self._emit_progress(
             progress_callback,
             action="dispense",
             detail=f"{dest_well} ({volume:.1f}uL)",
         )
-        self.client.dispense(volume, dest_id, dest_well)
+        self.client.dispense(volume, dest_id, dest_well, offset=dest_offset)
 
         if blow_out:
             self._emit_progress(
@@ -144,11 +148,12 @@ class OT2Operations:
                 action="blow_out",
                 detail=dest_well,
             )
-            self.client.blow_out(dest_id, dest_well)
+            self.client.blow_out(dest_id, dest_well, offset=dest_offset)
 
         if cleaning_id and rinse_col:
             self.rinse(
                 cleaning_id, rinse_col,
+                offset=cleaning_offset,
                 cycles=rinse_cycles, volume=rinse_volume,
                 progress_callback=progress_callback,
             )
@@ -159,7 +164,7 @@ class OT2Operations:
                 action="drop_tip",
                 detail=f"tip {tip_well}",
             )
-            self.client.drop_tip(tiprack_id, tip_well)
+            self.client.drop_tip(tiprack_id, tip_well, offset=tip_offset)
 
     def mix(
         self,
@@ -170,6 +175,9 @@ class OT2Operations:
         cycles: int = 3,
         volume: float = 200.0,
         cleaning_id: Optional[str] = None,
+        tip_offset=None,
+        labware_offset=None,
+        cleaning_offset=None,
         rinse_col: Optional[str] = None,
         rinse_cycles: Optional[int] = None,
         rinse_volume: Optional[float] = None,
@@ -201,7 +209,7 @@ class OT2Operations:
             action="pick_up_tip",
             detail=f"tip {tip_well}",
         )
-        self.client.pick_up_tip(tiprack_id, tip_well)
+        self.client.pick_up_tip(tiprack_id, tip_well, offset=tip_offset)
 
         for idx in range(cycles):
             self._emit_progress(
@@ -211,7 +219,7 @@ class OT2Operations:
                 cycle=idx + 1,
                 total_cycles=cycles,
             )
-            self.client.aspirate(volume, labware_id, mix_well)
+            self.client.aspirate(volume, labware_id, mix_well, offset=labware_offset)
             self._emit_progress(
                 progress_callback,
                 action="mix_dispense",
@@ -219,18 +227,19 @@ class OT2Operations:
                 cycle=idx + 1,
                 total_cycles=cycles,
             )
-            self.client.dispense(volume, labware_id, mix_well)
+            self.client.dispense(volume, labware_id, mix_well, offset=labware_offset)
 
         self._emit_progress(
             progress_callback,
             action="blow_out",
             detail=mix_well,
         )
-        self.client.blow_out(labware_id, mix_well)
+        self.client.blow_out(labware_id, mix_well, offset=labware_offset)
 
         if cleaning_id and rinse_col:
             self.rinse(
                 cleaning_id, rinse_col,
+                offset=cleaning_offset,
                 cycles=rinse_cycles, volume=rinse_volume,
                 progress_callback=progress_callback,
             )
@@ -241,12 +250,13 @@ class OT2Operations:
                 action="drop_tip",
                 detail=f"tip {tip_well}",
             )
-            self.client.drop_tip(tiprack_id, tip_well)
+            self.client.drop_tip(tiprack_id, tip_well, offset=tip_offset)
 
     def rinse(
         self,
         cleaning_id: str,
         well: str,
+        offset=None,
         cycles: Optional[int] = None,
         volume: Optional[float] = None,
         progress_callback: Optional[ProgressCallback] = None,
@@ -275,7 +285,7 @@ class OT2Operations:
                 cycle=idx + 1,
                 total_cycles=n,
             )
-            self.client.aspirate(v, cleaning_id, well)
+            self.client.aspirate(v, cleaning_id, well, offset=offset)
             self._emit_progress(
                 progress_callback,
                 action="rinse_dispense",
@@ -283,10 +293,10 @@ class OT2Operations:
                 cycle=idx + 1,
                 total_cycles=n,
             )
-            self.client.dispense(v, cleaning_id, well)
+            self.client.dispense(v, cleaning_id, well, offset=offset)
         self._emit_progress(
             progress_callback,
             action="blow_out",
             detail=well,
         )
-        self.client.blow_out(cleaning_id, well)
+        self.client.blow_out(cleaning_id, well, offset=offset)

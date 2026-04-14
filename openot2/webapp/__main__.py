@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from webapp.app import WebApp
+from openot2.webapp.app import WebApp
 
 
 def main() -> None:

@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+{% block title %}OpenOT2 - Calibration{% endblock %}
+{% block nav_calibration %}active{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .setup-section { max-width: 600px; margin-bottom: 1.5rem; }
+    .setup-section label { display: block; margin: 0.5rem 0 0.2rem; color: #8899aa; font-size: 0.85rem; }
+    .setup-section input, .setup-section select {
+        width: 100%; padding: 0.5rem 0.75rem; background: #0d1b2e;
+        border: 1px solid #243b5c; border-radius: 6px; color: #e0e6ed;
+    }
+    .target-form { background: #0d1b2e; border: 1px solid #243b5c; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; }
+    .target-form-row { display: flex; gap: 0.75rem; }
+    .target-form-row > div { flex: 1; }
+
+    /* Step-by-step calibration */
+    .cal-wizard { display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; }
+    @media (max-width: 900px) { .cal-wizard { grid-template-columns: 1fr; } }
+
+    .target-list { background: #1a2d4a; border: 1px solid #243b5c; border-radius: 10px; padding: 1rem; }
+    .target-item {
+        padding: 0.6rem 0.75rem; border-radius: 6px; cursor: pointer;
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 0.35rem; font-size: 0.85rem; transition: background 0.15s;
+    }
+    .target-item:hover { background: rgba(78, 168, 255, 0.08); }
+    .target-item.active { background: rgba(78, 168, 255, 0.15); border-left: 3px solid #4ea8ff; }
+    .target-item .slot-badge {
+        font-size: 0.7rem; background: #243b5c; padding: 0.15rem 0.5rem;
+        border-radius: 4px; color: #8899aa;
+    }
+
+    .cal-panel { background: #1a2d4a; border: 1px solid #243b5c; border-radius: 10px; padding: 1.5rem; }
+    .cal-panel h2 { font-size: 1.2rem; margin-bottom: 0.35rem; }
+    .cal-panel .sub { color: #667788; font-size: 0.85rem; margin-bottom: 1.25rem; }
+
+    .offset-display {
+        font-family: monospace; font-size: 1rem; background: #0d1b2e;
+        padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1.25rem;
+        display: flex; justify-content: space-around;
+    }
+    .offset-display .axis { text-align: center; }
+    .offset-display .axis-label { color: #667788; font-size: 0.75rem; display: block; }
+    .offset-display .axis-value { color: #4ea8ff; font-weight: 700; font-size: 1.1rem; }
+
+    .nudge-section { display: flex; gap: 2rem; justify-content: center; align-items: flex-start; margin-bottom: 1.25rem; flex-wrap: wrap; }
+
+    .nudge-pad {
+        display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 40px);
+        gap: 4px; justify-content: center;
+    }
+    .nudge-pad button {
+        background: #243b5c; border: 1px solid #2d4a6f; border-radius: 6px;
+        color: #e0e6ed; font-size: 0.85rem; cursor: pointer; transition: background 0.15s;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .nudge-pad button:hover { background: #4ea8ff; color: #fff; }
+    .nudge-pad .center { background: transparent; border: none; cursor: default; color: #667788; font-size: 0.7rem; }
+    .nudge-pad .center:hover { background: transparent; color: #667788; }
+
+    .z-pad { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+    .z-pad button {
+        width: 60px; height: 40px; background: #243b5c; border: 1px solid #2d4a6f;
+        border-radius: 6px; color: #e0e6ed; font-size: 0.85rem; cursor: pointer;
+    }
+    .z-pad button:hover { background: #4ea8ff; color: #fff; }
+    .z-pad .z-label { color: #667788; font-size: 0.75rem; }
+
+    .step-size { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; justify-content: center; }
+    .step-size label { color: #667788; font-size: 0.8rem; }
+    .step-btn { background: #0d1b2e; border: 1px solid #243b5c; border-radius: 4px; padding: 0.25rem 0.6rem; color: #8899aa; cursor: pointer; font-size: 0.8rem; }
+    .step-btn.active { background: #4ea8ff; color: #fff; border-color: #4ea8ff; }
+
+    .action-bar { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+
+    .dispense-test { background: #0d1b2e; border: 1px solid #243b5c; border-radius: 8px; padding: 1rem; margin-top: 1.25rem; }
+    .dispense-test select { padding: 0.4rem 0.75rem; background: #1a2d4a; border: 1px solid #243b5c; border-radius: 6px; color: #e0e6ed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="font-size:1.5rem; margin-bottom:1.5rem;">Calibration</h1>
+
+{% if not has_client %}
+<div class="card" style="border-color:#ff9f4340; margin-bottom:1.5rem; padding:1rem;">
+    <span style="color:#ff9f43;">&#9888;</span> No OT2Client connected. Preview and test actions are unavailable.
+</div>
+{% endif %}
+
+{% if not profile %}
+<!-- No profile loaded — setup -->
+<div class="setup-section card">
+    <h2 style="font-size:1.1rem; margin-bottom:1rem;">Load existing profile</h2>
+    <label>Profile JSON path</label>
+    <div style="display:flex; gap:0.5rem;">
+        <input type="text" id="profile-path" placeholder="/path/to/calibration_profile.json" style="flex:1;">
+        <button class="btn btn-primary" onclick="loadProfile()">Load</button>
+    </div>
+</div>
+
+<div class="setup-section card">
+    <h2 style="font-size:1.1rem; margin-bottom:1rem;">Create new profile</h2>
+    <label>Profile Name</label>
+    <input type="text" id="new-profile-name" placeholder="my-calibration">
+
+    <div id="target-forms" style="margin-top:1rem;">
+        <div class="target-form" data-idx="0">
+            <strong style="color:#4ea8ff;">Target 1</strong>
+            <div class="target-form-row" style="margin-top:0.5rem;">
+                <div><label>Name</label><input class="t-name" value="source"></div>
+                <div><label>Action</label>
+                    <select class="t-action"><option value="pick_up_tip">pick_up_tip</option><option value="aspirate">aspirate</option><option value="dispense">dispense</option></select>
+                </div>
+                <div><label>Mount</label><select class="t-mount"><option value="left">left</option><option value="right" selected>right</option></select></div>
+            </div>
+            <div class="target-form-row" style="margin-top:0.25rem;">
+                <div><label>Slot</label><input class="t-slot" value="3"></div>
+                <div><label>Well</label><input class="t-well" value="A1"></div>
+                <div><label>Volume</label><input class="t-volume" type="number" step="0.1" value="50"></div>
+            </div>
+        </div>
+    </div>
+
+    <div style="display:flex; gap:0.5rem; margin-top:0.75rem;">
+        <button class="btn" style="background:#243b5c;" onclick="addTargetForm()">+ Add Target</button>
+        <button class="btn btn-success" onclick="createProfile()">Create Profile</button>
+    </div>
+</div>
+
+{% else %}
+<!-- Profile loaded — step-by-step calibration wizard -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
+    <h2 style="font-size:1.2rem;">{{ profile.name }}</h2>
+    <div style="display:flex; gap:0.5rem;">
+        <button class="btn btn-primary" onclick="saveProfile()">Save Profile</button>
+        <button class="btn" style="background:#243b5c;" onclick="homeRobot()">Home</button>
+    </div>
+</div>
+
+<div class="cal-wizard">
+    <!-- Left: target list -->
+    <div class="target-list">
+        <div style="color:#667788; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.75rem;">Calibration Points</div>
+        {% for target in profile.targets %}
+        <div class="target-item{% if loop.index0 == 0 %} active{% endif %}" id="tgt-item-{{ loop.index0 }}" onclick="selectTarget({{ loop.index0 }})">
+            <span>{{ target.name }}</span>
+            <span class="slot-badge">Slot {{ target.labware_slot }}</span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Right: active target controls -->
+    <div class="cal-panel" id="cal-panel">
+        {% set t = profile.targets[0] %}
+        <h2 id="panel-name">{{ t.name }}</h2>
+        <div class="sub" id="panel-info">{{ t.pipette_mount|title }} arm &middot; Slot {{ t.labware_slot }} &middot; {{ t.well }} &middot; {{ t.action }}</div>
+
+        <div class="offset-display" id="offset-display">
+            <div class="axis"><span class="axis-label">X</span><span class="axis-value" id="ox">{{ "%.2f"|format(t.offset.x) }}</span></div>
+            <div class="axis"><span class="axis-label">Y</span><span class="axis-value" id="oy">{{ "%.2f"|format(t.offset.y) }}</span></div>
+            <div class="axis"><span class="axis-label">Z</span><span class="axis-value" id="oz">{{ "%.2f"|format(t.offset.z) }}</span></div>
+        </div>
+
+        <div class="step-size">
+            <label>Step:</label>
+            <button class="step-btn" onclick="setStep(0.1)">0.1</button>
+            <button class="step-btn active" onclick="setStep(0.5)">0.5</button>
+            <button class="step-btn" onclick="setStep(1.0)">1.0</button>
+            <button class="step-btn" onclick="setStep(2.0)">2.0</button>
+        </div>
+
+        <div class="nudge-section">
+            <!-- XY pad -->
+            <div>
+                <div style="text-align:center; color:#667788; font-size:0.75rem; margin-bottom:0.25rem;">XY</div>
+                <div class="nudge-pad">
+                    <button style="visibility:hidden;"></button>
+                    <button onclick="doNudge('y', stepSize)" title="Y+">&#9650;</button>
+                    <button style="visibility:hidden;"></button>
+                    <button onclick="doNudge('x', -stepSize)" title="X-">&#9664;</button>
+                    <div class="center">XY</div>
+                    <button onclick="doNudge('x', stepSize)" title="X+">&#9654;</button>
+                    <button style="visibility:hidden;"></button>
+                    <button onclick="doNudge('y', -stepSize)" title="Y-">&#9660;</button>
+                    <button style="visibility:hidden;"></button>
+                </div>
+            </div>
+
+            <!-- Z pad -->
+            <div class="z-pad">
+                <div class="z-label">Z</div>
+                <button onclick="doNudge('z', stepSize)" title="Z+">Z &#9650;</button>
+                <button onclick="doNudge('z', -stepSize)" title="Z-">Z &#9660;</button>
+            </div>
+        </div>
+
+        <div class="action-bar">
+            <button class="btn btn-primary" onclick="doPreview()">Move Here</button>
+            <button class="btn" id="btn-test-aspirate" style="background:#243b5c;" onclick="doTestAspirate()">Test Aspirate</button>
+            <button class="btn" id="btn-test-pick-up-tip" style="background:#243b5c; display:none;" onclick="doTestPickUpTip()">Test Pick Up Tip</button>
+            <button class="btn" id="btn-test-drop-tip" style="background:#243b5c; display:none;" onclick="doTestDropTip()">Test Drop Tip</button>
+            <button class="btn btn-success" onclick="nextTarget()">Next &#9654;</button>
+        </div>
+
+        <div class="dispense-test" id="dispense-panel">
+            <div style="color:#667788; font-size:0.8rem; margin-bottom:0.5rem;">Test Dispense (source &rarr; destination)</div>
+            <div style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
+                <div>
+                    <label style="color:#8899aa; font-size:0.8rem;">Source</label>
+                    <select id="dispense-source"></select>
+                </div>
+                <div>
+                    <label style="color:#8899aa; font-size:0.8rem;">Dest</label>
+                    <div id="dispense-dest-label" style="min-width:220px; padding:0.4rem 0.5rem; background:#1a2d4a; border:1px solid #243b5c; border-radius:6px; color:#e0e6ed;">{{ t.name }}</div>
+                </div>
+                <div>
+                    <label style="color:#8899aa; font-size:0.8rem;">Volume (µL)</label>
+                    <input type="number" id="dispense-volume" value="50" step="10" min="1" max="300"
+                           style="width:80px; padding:0.4rem 0.5rem; background:#1a2d4a; border:1px solid #243b5c; border-radius:6px; color:#e0e6ed;">
+                </div>
+                <button class="btn btn-success" id="btn-test-dispense" onclick="testDispense()">Dispense</button>
+            </div>
+            <div id="dispense-help" style="color:#667788; font-size:0.75rem; margin-top:0.5rem;"></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let targetCount = 1;
+    let activeIdx = 0;
+    let stepSize = 0.5;
+
+    // Target metadata from server
+    const targetData = [
+        {% if profile %}
+        {% for t in profile.targets %}
+        {name: "{{ t.name }}", slot: "{{ t.labware_slot }}", well: "{{ t.well }}", mount: "{{ t.pipette_mount }}", action: "{{ t.action }}", ox: {{ t.offset.x }}, oy: {{ t.offset.y }}, oz: {{ t.offset.z }}},
+        {% endfor %}
+        {% endif %}
+    ];
+
+    // ---- Setup (no profile) ----
+
+    async function loadProfile() {
+        const path = document.getElementById("profile-path").value.trim();
+        if (!path) { showToast("Enter a file path", "warning"); return; }
+        const data = await apiPost("/api/calibration/load-profile", { path });
+        if (data) { showToast("Profile loaded: " + data.profile, "success"); window.location.reload(); }
+    }
+
+    function addTargetForm() {
+        targetCount++;
+        const container = document.getElementById("target-forms");
+        const div = document.createElement("div");
+        div.className = "target-form";
+        div.innerHTML = '<strong style="color:#4ea8ff;">Target ' + targetCount + '</strong>' +
+            '<div class="target-form-row" style="margin-top:0.5rem;">' +
+            '<div><label>Name</label><input class="t-name" value="target-' + targetCount + '"></div>' +
+            '<div><label>Action</label><select class="t-action"><option value="pick_up_tip">pick_up_tip</option><option value="aspirate">aspirate</option><option value="dispense" selected>dispense</option></select></div>' +
+            '<div><label>Mount</label><select class="t-mount"><option value="left">left</option><option value="right" selected>right</option></select></div></div>' +
+            '<div class="target-form-row" style="margin-top:0.25rem;">' +
+            '<div><label>Slot</label><input class="t-slot" value="5"></div>' +
+            '<div><label>Well</label><input class="t-well" value="A1"></div>' +
+            '<div><label>Volume</label><input class="t-volume" type="number" step="0.1" value="50"></div></div>';
+        container.appendChild(div);
+    }
+
+    async function createProfile() {
+        const name = document.getElementById("new-profile-name").value.trim();
+        if (!name) { showToast("Enter a profile name", "warning"); return; }
+        const entries = document.querySelectorAll(".target-form");
+        const targets = [];
+        entries.forEach(function(e) {
+            targets.push({
+                name: e.querySelector(".t-name").value,
+                pipette_mount: e.querySelector(".t-mount").value,
+                action: e.querySelector(".t-action").value,
+                labware_slot: e.querySelector(".t-slot").value,
+                well: e.querySelector(".t-well").value,
+                volume: parseFloat(e.querySelector(".t-volume").value) || null,
+            });
+        });
+        const data = await apiPost("/api/calibration/create-profile", { name: name, targets: targets });
+        if (data) { showToast("Profile created!", "success"); window.location.reload(); }
+    }
+
+    // ---- Wizard (profile loaded) ----
+
+    function selectTarget(idx) {
+        activeIdx = idx;
+        // Update list highlight
+        document.querySelectorAll('.target-item').forEach(function(el) { el.classList.remove('active'); });
+        document.getElementById('tgt-item-' + idx).classList.add('active');
+
+        // Update panel
+        var t = targetData[idx];
+        document.getElementById('panel-name').textContent = t.name;
+        document.getElementById('panel-info').textContent = capitalize(t.mount) + ' arm \u00b7 Slot ' + t.slot + ' \u00b7 ' + t.well + ' \u00b7 ' + t.action;
+        document.getElementById('ox').textContent = t.ox.toFixed(2);
+        document.getElementById('oy').textContent = t.oy.toFixed(2);
+        document.getElementById('oz').textContent = t.oz.toFixed(2);
+        updateActionControls();
+
+        // Auto-preview: move robot to this target
+        doPreview();
+    }
+
+    function capitalize(s) {
+        return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+    }
+
+    function updateActionControls() {
+        if (!targetData.length) return;
+        var t = targetData[activeIdx];
+        var aspirateBtn = document.getElementById('btn-test-aspirate');
+        var pickUpBtn = document.getElementById('btn-test-pick-up-tip');
+        var dropTipBtn = document.getElementById('btn-test-drop-tip');
+        var dispensePanel = document.getElementById('dispense-panel');
+        var dispenseDest = document.getElementById('dispense-dest-label');
+
+        aspirateBtn.style.display = (t.action === 'aspirate') ? '' : 'none';
+        pickUpBtn.style.display = (t.action === 'pick_up_tip') ? '' : 'none';
+        dropTipBtn.style.display = (t.action === 'pick_up_tip') ? '' : 'none';
+        dispensePanel.style.display = (t.action === 'dispense') ? '' : 'none';
+
+        if (t.action === 'dispense') {
+            dispenseDest.textContent = t.name + ' (' + capitalize(t.mount) + ' arm)';
+            renderDispenseSources();
+        }
+    }
+
+    function renderDispenseSources() {
+        var t = targetData[activeIdx];
+        var srcSel = document.getElementById('dispense-source');
+        var btn = document.getElementById('btn-test-dispense');
+        var help = document.getElementById('dispense-help');
+        var options = targetData
+            .map(function(target, idx) { return {target: target, idx: idx}; })
+            .filter(function(item) {
+                return item.target.mount === t.mount && item.target.action === 'aspirate';
+            });
+
+        srcSel.innerHTML = '';
+        options.forEach(function(item) {
+            var opt = document.createElement('option');
+            opt.value = item.idx;
+            opt.textContent = item.target.name;
+            srcSel.appendChild(opt);
+        });
+
+        if (!options.length) {
+            btn.disabled = true;
+            help.textContent = 'No compatible aspirate source found for this pipette.';
+        } else {
+            btn.disabled = false;
+            help.textContent = 'Only ' + t.mount + ' arm aspirate targets are available as sources.';
+        }
+    }
+
+    function setStep(s) {
+        stepSize = s;
+        document.querySelectorAll('.step-btn').forEach(function(b) { b.classList.remove('active'); });
+        event.target.classList.add('active');
+    }
+
+    async function doNudge(axis, delta) {
+        var data = await apiPost("/api/calibration/nudge", { target_index: activeIdx, axis: axis, delta: delta });
+        if (data && data.offset) {
+            var o = data.offset;
+            document.getElementById('ox').textContent = o.x.toFixed(2);
+            document.getElementById('oy').textContent = o.y.toFixed(2);
+            document.getElementById('oz').textContent = o.z.toFixed(2);
+            targetData[activeIdx].ox = o.x;
+            targetData[activeIdx].oy = o.y;
+            targetData[activeIdx].oz = o.z;
+            // Re-preview after nudge so robot moves to new position
+            doPreview();
+        }
+    }
+
+    async function doPreview() {
+        await apiPost("/api/calibration/preview", { target_index: activeIdx });
+    }
+
+    async function doTestAspirate() {
+        var data = await apiPost("/api/calibration/test-aspirate", { target_index: activeIdx });
+        if (data) showToast("Aspirate test OK", "success");
+    }
+
+    async function doTestPickUpTip() {
+        var data = await apiPost("/api/calibration/test-pick-up-tip", { target_index: activeIdx });
+        if (data) showToast("Pick-up tip test OK", "success");
+    }
+
+    async function doTestDropTip() {
+        var data = await apiPost("/api/calibration/test-drop-tip", { target_index: activeIdx });
+        if (data) showToast("Drop tip test OK", "success");
+    }
+
+    function nextTarget() {
+        if (activeIdx < targetData.length - 1) {
+            selectTarget(activeIdx + 1);
+        } else {
+            showToast("All targets calibrated!", "success");
+        }
+    }
+
+    async function testDispense() {
+        if (targetData[activeIdx].action !== 'dispense') return;
+        var srcIdx = parseInt(document.getElementById("dispense-source").value);
+        var vol = parseFloat(document.getElementById("dispense-volume").value) || 50;
+        var data = await apiPost("/api/calibration/test-dispense", { source_index: srcIdx, dest_index: activeIdx, volume: vol });
+        if (data) showToast("Dispense OK: " + data.source + " \u2192 " + data.dest, "success");
+    }
+
+    async function saveProfile() {
+        var path = prompt("Save profile to path:", "configs/calibrations/robot_calibration/robot_profile.json");
+        if (path) {
+            var data = await apiPost("/api/calibration/save-profile", { path: path });
+            if (data) showToast("Profile saved to " + path, "success");
+        }
+    }
+
+    async function homeRobot() {
+        await apiPost("/api/calibration/preview", { target_index: 0 });
+        showToast("Moving to first target", "info");
+    }
+
+    if (targetData.length) {
+        updateActionControls();
+    }
+</script>
+{% endblock %}

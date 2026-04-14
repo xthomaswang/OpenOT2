@@ -7,7 +7,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from vision.base_types import PredictionResult, VisionModel
+from openot2.vision.base_types import PredictionResult, VisionModel
 
 logger = logging.getLogger("openot2.vision.models")
 

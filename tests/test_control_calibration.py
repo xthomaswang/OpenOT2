@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from webapp.calibration import (
+from openot2.webapp.calibration import (
     CalibrationProfile,
     CalibrationSession,
     CalibrationTarget,
@@ -18,7 +18,9 @@ from webapp.calibration import (
     preview_target,
     save_profile,
     test_aspirate,
+    test_drop_tip,
     test_dispense,
+    test_pick_up_tip,
 )
 
 
@@ -125,9 +127,10 @@ class TestBuildTarget:
 class TestPreviewTarget:
     def test_calls_move_to_well(self) -> None:
         client = _make_client()
-        target = build_target("t", "3", "A1", "aspirate")
+        target = build_target("t", "3", "A1", "aspirate", pipette_mount="left")
         preview_target(client, target)
 
+        client.use_pipette.assert_called_once_with("left")
         client.get_labware_id.assert_called_once_with("3")
         client.move_to_well.assert_called_once_with(
             labware_id="labware-123",
@@ -144,9 +147,12 @@ class TestPreviewTarget:
 class TestTestAspirate:
     def test_uses_explicit_volume(self) -> None:
         client = _make_client()
-        target = build_target("t", "3", "A1", "aspirate", volume=100.0)
+        target = build_target(
+            "t", "3", "A1", "aspirate", volume=100.0, pipette_mount="right"
+        )
         test_aspirate(client, target, volume=50.0)
 
+        client.use_pipette.assert_called_once_with("right")
         client.aspirate.assert_called_once_with(
             volume=50.0,
             labware_id="labware-123",
@@ -186,11 +192,12 @@ class TestTestDispense:
         client = _make_client()
         # get_labware_id returns different IDs per slot
         client.get_labware_id.side_effect = lambda s: f"lw-{s}"
-        src = self._src(volume=50.0)
-        dst = self._dst()
+        src = build_target("src", "3", "A1", "aspirate", volume=50.0, pipette_mount="right")
+        dst = build_target("dst", "5", "B2", "dispense", pipette_mount="right")
 
         test_dispense(client, dst, source_target=src)
 
+        client.use_pipette.assert_called_once_with("right")
         client.aspirate.assert_called_once_with(
             volume=50.0,
             labware_id="lw-3",
@@ -208,6 +215,14 @@ class TestTestDispense:
             well="B2",
             offset=(0.0, 0.0, 0.0),
         )
+
+    def test_rejects_cross_mount_dispense(self) -> None:
+        client = _make_client()
+        src = build_target("src", "3", "A1", "aspirate", volume=50.0, pipette_mount="left")
+        dst = build_target("dst", "5", "B2", "dispense", pipette_mount="right")
+
+        with pytest.raises(ValueError, match="same pipette mount"):
+            test_dispense(client, dst, source_target=src)
 
     def test_explicit_volume_overrides(self) -> None:
         """Explicit volume param takes precedence over target volumes."""
@@ -246,6 +261,36 @@ class TestTestDispense:
         dst = self._dst(volume=None)
         with pytest.raises(ValueError, match="No volume"):
             test_dispense(client, dst, source_target=src)
+
+
+class TestTipCalibration:
+    def test_pick_up_tip_uses_target_mount(self) -> None:
+        client = _make_client()
+        target = build_target("tips", "11", "A1", "pick_up_tip", pipette_mount="right")
+
+        test_pick_up_tip(client, target)
+
+        client.use_pipette.assert_called_once_with("right")
+        client.pick_up_tip.assert_called_once_with(
+            labware_id="labware-123",
+            well="A1",
+            offset=(0.0, 0.0, 0.0),
+        )
+        client.drop_tip_in_trash.assert_not_called()
+
+    def test_drop_tip_uses_target_mount(self) -> None:
+        client = _make_client()
+        target = build_target("tips", "10", "A1", "pick_up_tip", pipette_mount="left")
+
+        test_drop_tip(client, target)
+
+        client.use_pipette.assert_called_once_with("left")
+        client.get_labware_id.assert_called_once_with("10")
+        client.drop_tip.assert_called_once_with(
+            labware_id="labware-123",
+            well="A1",
+            offset=(0.0, 0.0, 0.0),
+        )
 
 
 # ---------------------------------------------------------------------------

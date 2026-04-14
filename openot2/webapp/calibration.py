@@ -21,7 +21,7 @@ from openot2.client import OT2Client
 # Type aliases
 # ---------------------------------------------------------------------------
 
-CalibrationAction = Literal["aspirate", "dispense"]
+CalibrationAction = Literal["aspirate", "dispense", "pick_up_tip"]
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -131,12 +131,18 @@ def build_target(
     )
 
 
+def _activate_target_pipette(client: OT2Client, target: CalibrationTarget) -> None:
+    """Switch the robot to the pipette required by *target*."""
+    client.use_pipette(target.pipette_mount)
+
+
 def preview_target(client: OT2Client, target: CalibrationTarget) -> None:
     """Move the pipette to *target*'s well so the user can visually verify.
 
     Resolves the labware ID from the slot via
     :pymeth:`OT2Client.get_labware_id`.
     """
+    _activate_target_pipette(client, target)
     labware_id = client.get_labware_id(target.labware_slot)
     client.move_to_well(
         labware_id=labware_id,
@@ -167,6 +173,7 @@ def test_aspirate(
         raise ValueError(
             "No volume specified — pass volume explicitly or set target.volume"
         )
+    _activate_target_pipette(client, target)
     labware_id = client.get_labware_id(target.labware_slot)
     client.aspirate(
         volume=vol,
@@ -177,6 +184,34 @@ def test_aspirate(
 
 
 test_aspirate.__test__ = False  # prevent pytest collection
+
+
+def test_pick_up_tip(client: OT2Client, target: CalibrationTarget) -> None:
+    """Pick up a tip at *target*."""
+    _activate_target_pipette(client, target)
+    labware_id = client.get_labware_id(target.labware_slot)
+    client.pick_up_tip(
+        labware_id=labware_id,
+        well=target.well,
+        offset=target.offset.as_tuple(),
+    )
+
+
+test_pick_up_tip.__test__ = False  # prevent pytest collection
+
+
+def test_drop_tip(client: OT2Client, target: CalibrationTarget) -> None:
+    """Return the currently attached tip to *target*'s tip position."""
+    _activate_target_pipette(client, target)
+    labware_id = client.get_labware_id(target.labware_slot)
+    client.drop_tip(
+        labware_id=labware_id,
+        well=target.well,
+        offset=target.offset.as_tuple(),
+    )
+
+
+test_drop_tip.__test__ = False  # prevent pytest collection
 
 
 def test_dispense(
@@ -207,12 +242,19 @@ def test_dispense(
     ValueError
         If no volume can be resolved from any source.
     """
+    if source_target.pipette_mount != target.pipette_mount:
+        raise ValueError(
+            "Dispense source and destination must use the same pipette mount"
+        )
+
     vol = volume if volume is not None else (target.volume or source_target.volume)
     if vol is None:
         raise ValueError(
             "No volume specified — pass volume explicitly or set "
             "target.volume or source_target.volume"
         )
+
+    _activate_target_pipette(client, target)
 
     # 1. Aspirate from source
     src_labware = client.get_labware_id(source_target.labware_slot)

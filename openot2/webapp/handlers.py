@@ -42,6 +42,53 @@ class OT2StepHandlers:
         self.client = client
         self.ops = ops
         self.progress_callback = None
+        self.calibration_profile = None
+        self._active_mount: str | None = None
+
+    def set_calibration_profile(self, profile) -> None:
+        """Update the active robot calibration profile used for offsets."""
+        self.calibration_profile = profile
+
+    def _resolve_calibration_offset(
+        self,
+        *,
+        slot: str,
+        well: str,
+        action: str,
+        mount: str | None = None,
+    ):
+        """Resolve the best matching offset from the loaded calibration profile."""
+        profile = self.calibration_profile
+        if profile is None:
+            return None
+
+        slot = str(slot)
+        well = str(well)
+        mount = mount or self._active_mount
+
+        candidates = list(getattr(profile, "targets", []) or [])
+        if mount is not None:
+            mount_matches = [t for t in candidates if getattr(t, "pipette_mount", None) == mount]
+            if mount_matches:
+                candidates = mount_matches
+
+        def _pick(predicate):
+            for target in candidates:
+                if predicate(target):
+                    return target.offset.as_tuple()
+            return None
+
+        checks = [
+            lambda t: t.labware_slot == slot and t.well == well and t.action == action,
+            lambda t: t.labware_slot == slot and t.well == well,
+            lambda t: t.labware_slot == slot and t.action == action,
+            lambda t: t.labware_slot == slot,
+        ]
+        for predicate in checks:
+            found = _pick(predicate)
+            if found is not None:
+                return found
+        return None
 
     def _emit_progress(
         self,
@@ -112,10 +159,17 @@ class OT2StepHandlers:
             return {"skipped": True, "reason": "no client"}
         p = step.params
         labware_id = self.client.get_labware_id(p["slot"])
+        well = p.get("well", "A1")
+        offset = self._resolve_calibration_offset(
+            slot=p["slot"],
+            well=well,
+            action="aspirate",
+        )
         self.client.aspirate(
             volume=p["volume"],
             labware_id=labware_id,
-            well=p.get("well", "A1"),
+            well=well,
+            offset=offset,
         )
         return {"aspirated": p["volume"]}
 
@@ -124,10 +178,17 @@ class OT2StepHandlers:
             return {"skipped": True, "reason": "no client"}
         p = step.params
         labware_id = self.client.get_labware_id(p["slot"])
+        well = p.get("well", "A1")
+        offset = self._resolve_calibration_offset(
+            slot=p["slot"],
+            well=well,
+            action="dispense",
+        )
         self.client.dispense(
             volume=p["volume"],
             labware_id=labware_id,
-            well=p.get("well", "A1"),
+            well=well,
+            offset=offset,
         )
         return {"dispensed": p["volume"]}
 
@@ -136,7 +197,11 @@ class OT2StepHandlers:
             return {"skipped": True, "reason": "no client"}
         p = step.params
         labware_id = self.client.get_labware_id(p["slot"])
-        offset = tuple(p["offset"]) if "offset" in p else None
+        offset = tuple(p["offset"]) if "offset" in p else self._resolve_calibration_offset(
+            slot=p["slot"],
+            well=p.get("well", "A1"),
+            action="move",
+        )
         self.client.move_to_well(
             labware_id=labware_id,
             well=p.get("well", "A1"),
@@ -149,7 +214,13 @@ class OT2StepHandlers:
             return {"skipped": True, "reason": "no client"}
         p = step.params
         labware_id = self.client.get_labware_id(p["slot"])
-        self.client.pick_up_tip(labware_id=labware_id, well=p.get("well", "A1"))
+        well = p.get("well", "A1")
+        offset = self._resolve_calibration_offset(
+            slot=p["slot"],
+            well=well,
+            action="pick_up_tip",
+        )
+        self.client.pick_up_tip(labware_id=labware_id, well=well, offset=offset)
         return {"tip": "picked_up"}
 
     def handle_drop_tip(self, step: RunStep, context=None) -> dict:
@@ -170,6 +241,7 @@ class OT2StepHandlers:
         mount = step.params["mount"]
         self._emit_progress(step, context, action="use_pipette", detail=f"mount={mount}")
         self.client.use_pipette(mount)
+        self._active_mount = mount
         return {"active_pipette": mount}
 
     # ------------------------------------------------------------------
@@ -191,6 +263,30 @@ class OT2StepHandlers:
             volume=p["volume"],
             cleaning_id=(
                 client.get_labware_id(p["cleaning_slot"])
+                if "cleaning_slot" in p
+                else None
+            ),
+            tip_offset=self._resolve_calibration_offset(
+                slot=p["tiprack_slot"],
+                well=p.get("tip_well", "A1"),
+                action="pick_up_tip",
+            ),
+            source_offset=self._resolve_calibration_offset(
+                slot=p["source_slot"],
+                well=p.get("source_well", "A1"),
+                action="aspirate",
+            ),
+            dest_offset=self._resolve_calibration_offset(
+                slot=p["dest_slot"],
+                well=p.get("dest_well", "A1"),
+                action="dispense",
+            ),
+            cleaning_offset=(
+                self._resolve_calibration_offset(
+                    slot=p["cleaning_slot"],
+                    well=p.get("rinse_well", "A1"),
+                    action="aspirate",
+                )
                 if "cleaning_slot" in p
                 else None
             ),
@@ -222,6 +318,25 @@ class OT2StepHandlers:
             volume=p.get("volume", 150),
             cleaning_id=(
                 client.get_labware_id(p["cleaning_slot"])
+                if "cleaning_slot" in p
+                else None
+            ),
+            tip_offset=self._resolve_calibration_offset(
+                slot=p["tiprack_slot"],
+                well=p.get("tip_well", "A4"),
+                action="pick_up_tip",
+            ),
+            labware_offset=self._resolve_calibration_offset(
+                slot=p["plate_slot"],
+                well=p.get("mix_well", "A1"),
+                action="dispense",
+            ),
+            cleaning_offset=(
+                self._resolve_calibration_offset(
+                    slot=p["cleaning_slot"],
+                    well=p.get("rinse_well", "A1"),
+                    action="aspirate",
+                )
                 if "cleaning_slot" in p
                 else None
             ),
@@ -272,7 +387,7 @@ class OT2StepHandlers:
             self._emit_progress(
                 step, context, action="capture", detail=f"camera {camera_id}"
             )
-            from vision.camera import USBCamera
+            from openot2.vision.camera import USBCamera
             import cv2
 
             cam = USBCamera(
@@ -346,10 +461,10 @@ class OT2StepHandlers:
 
         try:
             if model_type == "yolo":
-                from vision import YOLOAdapter
+                from openot2.vision import YOLOAdapter
                 model = YOLOAdapter(model_path=model_path, num_classes=p.get("num_classes", 2))
             else:
-                from vision import SuperGradientsAdapter
+                from openot2.vision import SuperGradientsAdapter
                 model = SuperGradientsAdapter(model_path=model_path, num_classes=p.get("num_classes", 2))
 
             prediction = model.predict(image_path, conf=conf)

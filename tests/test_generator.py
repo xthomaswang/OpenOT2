@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from protocol.generator import (
+from openot2.protocol.generator import (
     DryRunResult,
     ProtocolGenerator,
     get_protocol_prompt,
@@ -107,7 +107,7 @@ class TestGenerate:
         mock_openai = MagicMock()
         mock_openai.return_value.chat.completions.create.return_value = mock_response
 
-        with patch("protocol.generator.ProtocolGenerator.__init__", return_value=None):
+        with patch("openot2.protocol.generator.ProtocolGenerator.__init__", return_value=None):
             gen = ProtocolGenerator.__new__(ProtocolGenerator)
             gen._client = mock_openai()
             gen._model = "gpt-4o"
@@ -131,7 +131,7 @@ class TestGenerate:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = fenced
 
-        with patch("protocol.generator.ProtocolGenerator.__init__", return_value=None):
+        with patch("openot2.protocol.generator.ProtocolGenerator.__init__", return_value=None):
             gen = ProtocolGenerator.__new__(ProtocolGenerator)
             gen._client = MagicMock()
             gen._client.chat.completions.create.return_value = mock_response
@@ -146,7 +146,7 @@ class TestGenerate:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "This is not JSON at all"
 
-        with patch("protocol.generator.ProtocolGenerator.__init__", return_value=None):
+        with patch("openot2.protocol.generator.ProtocolGenerator.__init__", return_value=None):
             gen = ProtocolGenerator.__new__(ProtocolGenerator)
             gen._client = MagicMock()
             gen._client.chat.completions.create.return_value = mock_response
@@ -178,7 +178,7 @@ class TestGenerateAndValidate:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps(valid_config)
 
-        with patch("protocol.generator.ProtocolGenerator.__init__", return_value=None):
+        with patch("openot2.protocol.generator.ProtocolGenerator.__init__", return_value=None):
             gen = ProtocolGenerator.__new__(ProtocolGenerator)
             gen._client = MagicMock()
             gen._client.chat.completions.create.return_value = mock_response

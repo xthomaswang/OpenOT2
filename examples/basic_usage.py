@@ -13,9 +13,9 @@ Prerequisites:
 """
 
 from openot2 import OT2Client, setup_logging
-from vision import YOLOAdapter, USBCamera, TipAnalyzer, LiquidAnalyzer
-from vision.analyzers import build_calibration_from_csv
-from protocol import ProtocolExecutor
+from openot2.vision import YOLOAdapter, USBCamera, TipAnalyzer, LiquidAnalyzer
+from openot2.vision.analyzers import build_calibration_from_csv
+from openot2.protocol import ProtocolExecutor
 
 # --- 1. Setup Logging ---
 setup_logging()  # Use setup_logging(logging.DEBUG) for verbose output

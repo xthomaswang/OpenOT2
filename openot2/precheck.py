@@ -87,7 +87,7 @@ def probe_cameras(max_id: int = 10) -> List[CameraInfo]:
 
     Returns a list of :class:`CameraInfo` without opening preview windows.
     """
-    from vision.camera import USBCamera
+    from openot2.vision.camera import USBCamera
 
     raw = USBCamera.list_cameras(max_id=max_id)
     return [
@@ -140,7 +140,7 @@ def run_device_precheck(
 
     if preview and cameras:
         try:
-            from vision.camera import USBCamera
+            from openot2.vision.camera import USBCamera
             USBCamera.precheck_cameras(
                 expected_id=expected_camera_id or 0,
                 max_id=max_camera_id,

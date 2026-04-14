@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from protocol.recovery import ErrorRecovery, RecoveryContext
-from protocol.generator import ProtocolGenerator, DryRunResult
+from openot2.protocol.recovery import ErrorRecovery, RecoveryContext
+from openot2.protocol.generator import ProtocolGenerator, DryRunResult
 
 
 # ---------------------------------------------------------------------------

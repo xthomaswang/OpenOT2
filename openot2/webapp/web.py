@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from webapp.calibration import (
+from openot2.webapp.calibration import (
     CalibrationProfile,
     CalibrationSession,
     CalibrationTarget,
@@ -31,7 +31,9 @@ from webapp.calibration import (
     preview_target,
     save_profile,
     test_aspirate,
+    test_drop_tip,
     test_dispense,
+    test_pick_up_tip,
 )
 from openot2.control.models import RunSequence, RunStatus, RunStep, TaskRun
 from openot2.control.runner import TaskRunner
@@ -120,7 +122,12 @@ def create_app(
     store: JsonRunStore,
     runner: TaskRunner,
     client: Any | None = None,
+    initial_calibration_profile: CalibrationProfile | None = None,
+    initial_calibration_session: CalibrationSession | None = None,
+    calibration_profile_sync=None,
     nav_links: list[dict] | None = None,
+    plugin: Any | None = None,
+    webapp: Any | None = None,
 ) -> FastAPI:
     """Create a :class:`FastAPI` application wired to the given store and runner.
 
@@ -136,6 +143,11 @@ def create_app(
     nav_links:
         Optional list of extra navigation links for the sidebar.
         Each dict should have ``title``, ``path``, and optionally ``icon``.
+    plugin:
+        Optional :class:`~openot2.task_api.plugin.TaskPlugin` instance.
+        When provided, generic task management routes are registered.
+    webapp:
+        Optional :class:`WebApp` facade that owns task_config / task_state.
     """
     app = FastAPI(title="OpenOT2 Control")
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -146,8 +158,10 @@ def create_app(
     app.state.client = client
     app.state.selected_camera = None  # {"device_id": int, "width": int, "height": int}
     app.state.active_runs: set[str] = set()
-    app.state.calibration_session: CalibrationSession | None = None
-    app.state.calibration_profile: CalibrationProfile | None = None
+    app.state.calibration_session: CalibrationSession | None = initial_calibration_session
+    app.state.calibration_profile: CalibrationProfile | None = initial_calibration_profile
+    if calibration_profile_sync is not None:
+        calibration_profile_sync(initial_calibration_profile)
 
     # ------------------------------------------------------------------
     # HTML pages
@@ -742,7 +756,7 @@ def create_app(
         import base64
         device_id = body.get("device_id", 0)
         try:
-            from vision.camera import USBCamera
+            from openot2.vision.camera import USBCamera
             import cv2
             cam = USBCamera(
                 camera_id=device_id,
@@ -842,7 +856,7 @@ def create_app(
         device_id = body.get("device_id", 0)
         try:
             import cv2
-            from vision.camera import USBCamera
+            from openot2.vision.camera import USBCamera
             # Open camera if not already open or if device changed
             if app.state._live_camera is None or app.state._live_camera_id != device_id:
                 _stop_live_camera()
@@ -930,6 +944,22 @@ def create_app(
         test_aspirate(c, target, volume=body.volume)
         return {"status": "ok", "target": target.name, "action": "aspirate"}
 
+    @app.post("/api/calibration/test-pick-up-tip")
+    async def calibration_test_pick_up_tip(body: TargetIndexRequest):
+        c = _require_client()
+        profile = _require_profile()
+        target = _get_target(profile, body.target_index)
+        test_pick_up_tip(c, target)
+        return {"status": "ok", "target": target.name, "action": "pick_up_tip"}
+
+    @app.post("/api/calibration/test-drop-tip")
+    async def calibration_test_drop_tip(body: TargetIndexRequest):
+        c = _require_client()
+        profile = _require_profile()
+        target = _get_target(profile, body.target_index)
+        test_drop_tip(c, target)
+        return {"status": "ok", "target": target.name, "action": "drop_tip"}
+
     @app.post("/api/calibration/test-dispense")
     async def calibration_test_dispense(body: DispenseRequest):
         c = _require_client()
@@ -971,6 +1001,8 @@ def create_app(
             )
         app.state.calibration_profile = profile
         app.state.calibration_session = CalibrationSession(profile_id=profile.id, status="active")
+        if calibration_profile_sync is not None:
+            calibration_profile_sync(profile)
         return {"status": "ok", "profile": profile.name, "targets": len(profile.targets)}
 
     @app.post("/api/calibration/create-profile")
@@ -985,6 +1017,8 @@ def create_app(
         profile = CalibrationProfile(name=body.name, targets=targets)
         app.state.calibration_profile = profile
         app.state.calibration_session = CalibrationSession(profile_id=profile.id, status="active")
+        if calibration_profile_sync is not None:
+            calibration_profile_sync(profile)
         return {"status": "ok", "profile": profile.name, "targets": len(profile.targets)}
 
     @app.get("/api/calibration/profile")
@@ -994,4 +1028,267 @@ def create_app(
             raise HTTPException(status_code=404, detail="No profile loaded")
         return profile.model_dump(mode="json")
 
+    # ------------------------------------------------------------------
+    # Generic task plugin routes
+    # ------------------------------------------------------------------
+    # When a TaskPlugin is provided, these endpoints delegate to it for
+    # plan, status, run construction, calibration targets, etc.
+    # The web shell knows nothing about the task domain — it just calls
+    # the plugin protocol methods.
+    # ------------------------------------------------------------------
+
+    if plugin is not None and webapp is not None:
+        _register_task_routes(app, plugin, webapp, store, runner)
+
     return app
+
+
+def _register_task_routes(
+    app: FastAPI,
+    plugin: Any,
+    webapp: Any,
+    store: JsonRunStore,
+    runner: TaskRunner,
+) -> None:
+    """Register generic task management routes backed by a :class:`TaskPlugin`.
+
+    These routes let the web shell manage any task without knowing its
+    domain specifics.  All task logic is delegated to *plugin*.
+    """
+
+    def _require_config():
+        cfg = webapp.task_config
+        if cfg is None:
+            raise HTTPException(status_code=400, detail="No task config loaded")
+        return cfg
+
+    def _ensure_state(mode: str = "quick") -> dict:
+        """Return the current task state, creating it if needed."""
+        if webapp.task_state is None:
+            cfg = _require_config()
+            webapp.task_state = plugin.initial_state(cfg, mode)
+        return webapp.task_state
+
+    # -- discovery --
+
+    @app.get("/api/task/info")
+    async def task_info():
+        """Return task plugin metadata."""
+        return {
+            "name": getattr(plugin, "name", "unknown"),
+            "has_config": webapp.task_config is not None,
+            "has_state": webapp.task_state is not None,
+        }
+
+    # -- plan --
+
+    @app.get("/api/task/plan")
+    async def task_plan(mode: str = "quick"):
+        """Return the task plan for the given mode."""
+        cfg = _require_config()
+        state = _ensure_state(mode)
+        return plugin.build_plan(cfg, state, mode)
+
+    # -- status --
+
+    @app.get("/api/task/status")
+    async def task_status():
+        """Return the canonical task status."""
+        cfg = _require_config()
+        state = _ensure_state()
+        payload = plugin.status_payload(cfg, state)
+
+        # Merge web extension extra_status if available
+        ext = plugin.web_extension(cfg)
+        if ext is not None:
+            try:
+                extra = ext.extra_status(cfg, state)
+                if isinstance(extra, dict):
+                    payload.update(extra)
+            except Exception:
+                pass
+
+        return payload
+
+    # -- run lifecycle helpers --
+
+    def _attach_run(state: dict, run_id: str) -> None:
+        """Record *run_id* as the active run in task state."""
+        state["active_run_id"] = run_id
+
+    def _detach_run(state: dict) -> None:
+        """Clear the active run from task state."""
+        state.pop("active_run_id", None)
+
+    # -- run lifecycle --
+
+    @app.post("/api/task/start")
+    async def task_start(request: Request):
+        """Start the task (first iteration or resume from idle)."""
+        body = {}
+        if request.headers.get("content-type", "").startswith("application/json"):
+            body = await request.json()
+        mode = body.get("mode", "quick")
+        cfg = _require_config()
+        state = _ensure_state(mode)
+
+        if state.get("terminal"):
+            raise HTTPException(status_code=409, detail="Task is in a terminal state; reset first")
+
+        iteration = state.get("iteration", 0)
+        run = plugin.build_iteration_run(cfg, state, iteration, mode)
+        store.create_run(run)
+
+        # Record active run BEFORE the background thread starts
+        _attach_run(state, run.id)
+
+        def _bg():
+            try:
+                finished = runner.run_until_pause_or_done(run.id)
+                new_state = plugin.apply_run_result(cfg, state, finished, mode)
+                # Keep active_run_id if run paused (user may resume)
+                if finished.status == RunStatus.paused:
+                    _attach_run(new_state, run.id)
+                else:
+                    _detach_run(new_state)
+                webapp.task_state = new_state
+            except Exception:
+                _detach_run(state)
+
+        import threading
+        threading.Thread(target=_bg, daemon=True).start()
+        return {"status": "started", "run_id": run.id, "iteration": iteration}
+
+    @app.post("/api/task/pause")
+    async def task_pause():
+        """Pause the currently running task run."""
+        state = _ensure_state()
+        active_run_id = state.get("active_run_id")
+        if not active_run_id:
+            raise HTTPException(status_code=409, detail="No active run to pause")
+        runner.request_pause(active_run_id)
+        return {"status": "pause_requested"}
+
+    @app.post("/api/task/resume")
+    async def task_resume():
+        """Resume the currently paused task run."""
+        state = _ensure_state()
+        active_run_id = state.get("active_run_id")
+        if not active_run_id:
+            raise HTTPException(status_code=409, detail="No active run to resume")
+
+        def _bg():
+            try:
+                finished = runner.resume(active_run_id)
+                cfg = _require_config()
+                mode = state.get("mode", "quick")
+                new_state = plugin.apply_run_result(cfg, state, finished, mode)
+                # Keep active_run_id if run paused again; clear on terminal
+                if finished.status == RunStatus.paused:
+                    _attach_run(new_state, active_run_id)
+                else:
+                    _detach_run(new_state)
+                webapp.task_state = new_state
+            except Exception:
+                _detach_run(state)
+
+        import threading
+        threading.Thread(target=_bg, daemon=True).start()
+        return {"status": "resumed"}
+
+    @app.post("/api/task/stop")
+    async def task_stop():
+        """Stop the currently running task run."""
+        state = _ensure_state()
+        active_run_id = state.get("active_run_id")
+        if not active_run_id:
+            raise HTTPException(status_code=409, detail="No active run to stop")
+        runner.request_pause(active_run_id)
+        state["terminal"] = True
+        _detach_run(state)
+        return {"status": "stop_requested"}
+
+    @app.post("/api/task/reset")
+    async def task_reset(request: Request):
+        """Reset task state to initial."""
+        body = {}
+        if request.headers.get("content-type", "").startswith("application/json"):
+            body = await request.json()
+        mode = body.get("mode", "quick")
+        cfg = _require_config()
+        webapp.task_state = plugin.initial_state(cfg, mode)
+        return {"status": "reset", "mode": mode}
+
+    # -- calibration --
+
+    @app.get("/api/task/calibration-targets")
+    async def task_calibration_targets():
+        """Return calibration targets from the task plugin."""
+        cfg = _require_config()
+        targets = plugin.build_calibration_targets(cfg)
+        return {"targets": targets}
+
+    @app.post("/api/task/calibrate")
+    async def task_calibrate():
+        """Build and execute the task's calibration run."""
+        cfg = _require_config()
+        state = _ensure_state()
+        run = plugin.build_calibration_run(cfg, state)
+        if run is None:
+            raise HTTPException(status_code=501, detail="Plugin does not support calibration")
+        store.create_run(run)
+
+        def _bg():
+            try:
+                finished = runner.run_until_pause_or_done(run.id)
+                mode = state.get("mode", "quick")
+                new_state = plugin.apply_run_result(cfg, state, finished, mode)
+                webapp.task_state = new_state
+            except Exception:
+                pass
+
+        import threading
+        threading.Thread(target=_bg, daemon=True).start()
+        return {"status": "started", "run_id": run.id}
+
+    @app.post("/api/task/tip-check")
+    async def task_tip_check():
+        """Build and execute the task's tip check run."""
+        cfg = _require_config()
+        state = _ensure_state()
+        run = plugin.build_tip_check_run(cfg, state)
+        if run is None:
+            raise HTTPException(status_code=501, detail="Plugin does not support tip checks")
+        store.create_run(run)
+        runner.run_until_pause_or_done(run.id)
+        finished = store.load_run(run.id)
+        return {
+            "status": finished.status.value,
+            "run_id": run.id,
+        }
+
+    # -- web extension --
+
+    ext = plugin.web_extension(webapp.task_config) if webapp.task_config else None
+
+    if ext is not None:
+        @app.get("/api/task/ui")
+        async def task_ui_payload():
+            """Return task-specific UI data from the web extension."""
+            cfg = _require_config()
+            state = _ensure_state()
+            return ext.ui_payload(cfg, state)
+
+        # Mount extra routes if the extension provides them
+        extra = ext.extra_routes()
+        if extra is not None:
+            if isinstance(extra, FastAPI):
+                app.mount("/api/task/ext", extra)
+            elif hasattr(extra, "__iter__"):
+                # Assume list of (method, path, handler) tuples
+                for method, path, handler in extra:
+                    app.add_api_route(
+                        f"/api/task/ext{path}",
+                        handler,
+                        methods=[method.upper()],
+                    )

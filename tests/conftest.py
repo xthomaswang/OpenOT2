@@ -12,7 +12,7 @@ import pytest
 import responses
 
 from openot2.client import OT2Client
-from vision.base_types import PredictionResult
+from openot2.vision.base_types import PredictionResult
 
 ROBOT_IP = "127.0.0.1"
 BASE_URL = f"http://{ROBOT_IP}:31950"

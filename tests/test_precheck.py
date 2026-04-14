@@ -63,7 +63,7 @@ class TestCheckRobotConnection(unittest.TestCase):
 
 
 class TestProbeCameras(unittest.TestCase):
-    @patch("vision.camera.USBCamera.list_cameras")
+    @patch("openot2.vision.camera.USBCamera.list_cameras")
     def test_found_cameras(self, mock_list):
         mock_list.return_value = [
             {"id": 0, "width": 1920, "height": 1080, "backend": 1200},
@@ -76,7 +76,7 @@ class TestProbeCameras(unittest.TestCase):
         self.assertEqual(cams[1].device_id, 2)
         mock_list.assert_called_once_with(max_id=5)
 
-    @patch("vision.camera.USBCamera.list_cameras")
+    @patch("openot2.vision.camera.USBCamera.list_cameras")
     def test_no_cameras(self, mock_list):
         mock_list.return_value = []
         cams = probe_cameras()

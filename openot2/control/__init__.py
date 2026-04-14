@@ -1,6 +1,7 @@
 """Generic task-controller data models and persistence."""
 
 from .models import RunEvent, RunStatus, RunStep, StepStatus, TaskRun
+from .runner import RefResolutionError
 from .store import JsonRunStore
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "TaskRun",
     "RunEvent",
     "JsonRunStore",
+    "RefResolutionError",
 ]

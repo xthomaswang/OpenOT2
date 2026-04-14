@@ -1,7 +1,18 @@
-"""Generic sequential task runner with safe-point pause/resume and ETA."""
+"""Generic sequential task runner with safe-point pause/resume, ETA, and
+step output binding via ``$ref``.
+
+Step output binding
+-------------------
+A step's ``params`` may contain ``{"$ref": "<key>.output.<field>"}`` values.
+Before the step handler is called the runner recursively resolves every
+``$ref`` by looking up the referenced step's ``output`` dict.  This lets
+later steps consume outputs produced by earlier ones without hard-coding
+values.
+"""
 
 from __future__ import annotations
 
+import copy
 import statistics
 import uuid
 from datetime import datetime, timezone
@@ -21,6 +32,10 @@ class HandlerNotFoundError(Exception):
     """Raised when no handler is registered for a step kind."""
 
 
+class RefResolutionError(Exception):
+    """Raised when a ``$ref`` in step params cannot be resolved."""
+
+
 class TaskRunner:
     """Execute a sequence of :class:`RunStep` items using pluggable handlers.
 
@@ -28,6 +43,10 @@ class TaskRunner:
     step list sequentially, honouring **safe-point pause** semantics: when a
     pause is requested the current step is allowed to finish, and the run
     transitions to *paused* before the next **checkpointed** step begins.
+
+    **Step output binding** — before executing each step the runner recursively
+    scans ``step.params`` for dicts of the form ``{"$ref": "<key>.output.<path>"}``
+    and replaces them with the actual value produced by the referenced step.
 
     Parameters
     ----------
@@ -181,6 +200,69 @@ class TaskRunner:
         self._emit(run.id, "run_completed", "Run completed successfully")
         return run
 
+    # ------------------------------------------------------------------
+    # $ref resolution
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_output_store(run: TaskRun) -> dict[str, dict[str, Any]]:
+        """Build a ``{key: output}`` mapping from completed steps."""
+        store: dict[str, dict[str, Any]] = {}
+        for s in run.steps:
+            if s.key is not None and s.output is not None:
+                store[s.key] = s.output
+        return store
+
+    @staticmethod
+    def _resolve_ref(ref: str, output_store: dict[str, dict[str, Any]]) -> Any:
+        """Resolve a single ``$ref`` string like ``"capture.output.image_path"``.
+
+        The format is ``<step_key>.output.<dotted_path>``.
+
+        Raises :class:`RefResolutionError` if the ref is malformed or the
+        target value does not exist.
+        """
+        parts = ref.split(".")
+        if len(parts) < 3 or parts[1] != "output":
+            raise RefResolutionError(
+                f"Invalid $ref format '{ref}': expected '<key>.output.<field>[.<field>...]'"
+            )
+
+        step_key = parts[0]
+        if step_key not in output_store:
+            raise RefResolutionError(
+                f"$ref '{ref}': step key '{step_key}' has no output (not found or not yet run)"
+            )
+
+        value: Any = output_store[step_key]
+        for segment in parts[2:]:
+            if isinstance(value, dict):
+                if segment not in value:
+                    raise RefResolutionError(
+                        f"$ref '{ref}': key '{segment}' not found in output"
+                    )
+                value = value[segment]
+            else:
+                raise RefResolutionError(
+                    f"$ref '{ref}': cannot descend into non-dict at '{segment}'"
+                )
+        return value
+
+    @classmethod
+    def _resolve_params(cls, params: Any, output_store: dict[str, dict[str, Any]]) -> Any:
+        """Recursively resolve all ``{"$ref": "..."}`` nodes in *params*."""
+        if isinstance(params, dict):
+            if len(params) == 1 and "$ref" in params:
+                return cls._resolve_ref(params["$ref"], output_store)
+            return {k: cls._resolve_params(v, output_store) for k, v in params.items()}
+        if isinstance(params, list):
+            return [cls._resolve_params(item, output_store) for item in params]
+        return params
+
+    # ------------------------------------------------------------------
+    # Step execution
+    # ------------------------------------------------------------------
+
     def _run_step(self, run: TaskRun, step: RunStep, context: Any) -> None:
         """Execute a single step via its registered handler."""
         handler = self._handlers.get(step.kind)
@@ -188,6 +270,11 @@ class TaskRunner:
             raise HandlerNotFoundError(
                 f"No handler registered for step kind '{step.kind}'"
             )
+
+        # Resolve $ref bindings in params before executing
+        output_store = self._build_output_store(run)
+        resolved_params = self._resolve_params(copy.deepcopy(step.params), output_store)
+        step.params = resolved_params
 
         step.status = StepStatus.running
         step.started_at = _now()

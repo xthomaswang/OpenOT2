@@ -54,9 +54,19 @@ def _now() -> datetime:
 # ---------------------------------------------------------------------------
 
 class RunStep(BaseModel):
-    """A single discrete step inside a :class:`TaskRun`."""
+    """A single discrete step inside a :class:`TaskRun`.
+
+    Attributes
+    ----------
+    key:
+        Stable, user-defined identifier for this step.  Other steps can
+        reference this step's output via ``{"$ref": "<key>.output.<field>"}``.
+        Unlike ``id`` (random UUID), ``key`` is deterministic and survives
+        serialisation round-trips, making it suitable for cross-step bindings.
+    """
 
     id: str = Field(default_factory=_uuid)
+    key: Optional[str] = None
     name: str
     kind: str
     params: dict[str, Any] = Field(default_factory=dict)

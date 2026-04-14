@@ -1,8 +1,8 @@
 """Vision subsystem: model adapters, camera, and analyzers."""
 
-from vision.base_types import PredictionResult, VisionModel
-from vision.camera import Camera, USBCamera
-from vision.analyzers import (
+from openot2.vision.base_types import PredictionResult, VisionModel
+from openot2.vision.camera import Camera, USBCamera
+from openot2.vision.analyzers import (
     TipAnalyzer,
     TipCheckResult,
     LiquidAnalyzer,
@@ -38,11 +38,11 @@ def precheck_cameras(expected_id: int = 0, **kwargs):
 # Lazy adapter imports to avoid forcing ML framework installation
 def YOLOAdapter(*args, **kwargs):  # noqa: N802
     """Lazy-loaded :class:`YOLOAdapter` (requires ``pip install openot2[yolo]``)."""
-    from vision.models import YOLOAdapter as _Cls
+    from openot2.vision.models import YOLOAdapter as _Cls
     return _Cls(*args, **kwargs)
 
 
 def SuperGradientsAdapter(*args, **kwargs):  # noqa: N802
     """Lazy-loaded :class:`SuperGradientsAdapter` (requires ``pip install openot2[supergradients]``)."""
-    from vision.models import SuperGradientsAdapter as _Cls
+    from openot2.vision.models import SuperGradientsAdapter as _Cls
     return _Cls(*args, **kwargs)
